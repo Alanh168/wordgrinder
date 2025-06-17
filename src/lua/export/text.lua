@@ -63,3 +63,8 @@ end
 function Cmd.ExportToTextString()
 	return ExportToString(Document, callback)
 end
+
+function Cmd.ExportTextFileSet(filename)
+	return ExportFileSetWithUI(filename, "Export Text File", ".txt",
+		callback)
+end

@@ -101,6 +101,17 @@ local ExportMenu = CreateMenu("Export current document",
 --	{"FErtf",  "R", "Export to Rtf...",          nil,         Cmd.ExportRTFFile},
 })
 
+local ExportSetMenu = CreateMenu("Export current document set",
+{
+--	{"FDodt",  "O", "Export to ODT...",          nil,         Cmd.ExportODTFile},
+--	{"FDhtml", "H", "Export to HTML...",         nil,         Cmd.ExportHTMLFile},
+--	{"FDmd",   "M", "Export to Markdown...",     nil,         Cmd.ExportMarkdownFile},
+	{"FDtxt",  "T", "Export to plain text...",   nil,         Cmd.ExportTextFileSet},
+--	{"FDtex",  "L", "Export to LaTeX...",        nil,         Cmd.ExportLatexFile},
+--	{"FDtr",   "F", "Export to Troff...",        nil,         Cmd.ExportTroffFile},
+--	{"FErtf",  "R", "Export to Rtf...",          nil,         Cmd.ExportRTFFile},
+})
+
 local DocumentSettingsMenu = CreateMenu("Document settings",
 {
     {"FSautosave",     "A", "Autosave...",           nil,         Cmd.ConfigureAutosave},
@@ -134,6 +145,7 @@ local FileMenu = CreateMenu("File",
 	{"FB",         "B", "Add new blank document",    nil,         Cmd.AddBlankDocument},
 	{"FI",         "I", "Import new document ▷",     nil,         ImportMenu},
 	{"FE",         "E", "Export current document ▷", nil,         ExportMenu},
+	{"FD",         "F", "Export document set >",     nil,         ExportSetMenu},
 	{"Fdocman",    "D", "Manage documents...",       nil,         Cmd.ManageDocumentsUI},
 	"-",
 	{"Fsettings",  "T", "Document settings ▷",       nil,         DocumentSettingsMenu},
