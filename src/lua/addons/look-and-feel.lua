@@ -25,6 +25,16 @@ function WantTerminators()
 end
 
 -----------------------------------------------------------------------------
+-- Indent first line of paragraphs?
+
+function WantFirstLineIndents()
+	local settings = GlobalSettings.lookandfeel
+	if settings then
+		return settings.firstlineindents or false
+	end
+	return true
+end
+-----------------------------------------------------------------------------
 -- Use the dense paragraph layout? (Indents, no space between paragraphs.)
 
 function WantDenseParagraphLayout()
@@ -93,18 +103,27 @@ function Cmd.ConfigureLookAndFeel()
 			value = settings.terminators
 		}
 
-	local denseparagraphs_checkbox =
+	local firstlineindents_checkbox =
 		Form.Checkbox {
 			x1 = 1, y1 = 7,
 			x2 = 50, y2 = 7,
+			label = "Indent first line of paragraphs",
+			value = settings.firstlineindents
+		}
+
+	local denseparagraphs_checkbox =
+		Form.Checkbox {
+			x1 = 1, y1 = 9,
+			x2 = 50, y2 = 9,
 			label = "Use dense paragraph layout",
 			value = settings.denseparagraphs
 		}
 
 	local fullstopspaces_checkbox =
 		Form.Checkbox {
-			x1 = 1, y1 = 9,
-			x2 = 50, y2 = 9,
+			x1 = 1, y1 = 11,
+			x2 = 50, y2 = 11,
+
 			label = "Show an extra space after full stops",
 			value = settings.fullstopspaces
 		}
@@ -113,7 +132,7 @@ function Cmd.ConfigureLookAndFeel()
 	{
 		title = "Configure Look and Feel",
 		width = Form.Large,
-		height = 11,
+		height = 13,
 		stretchy = false,
 
 		["KEY_^C"] = "cancel",
@@ -131,6 +150,7 @@ function Cmd.ConfigureLookAndFeel()
 		maxwidth_textfield,
 
 		terminators_checkbox,
+		firstlineindents_checkbox,
 		denseparagraphs_checkbox,
 		fullstopspaces_checkbox,
 	}
@@ -149,6 +169,7 @@ function Cmd.ConfigureLookAndFeel()
 			settings.enabled = enabled_checkbox.value
 			settings.maxwidth = maxwidth
 			settings.terminators = terminators_checkbox.value
+			settings.firstlineindents = firstlineindents_checkbox.value
 			settings.denseparagraphs = denseparagraphs_checkbox.value
 			settings.fullstopspaces = fullstopspaces_checkbox.value
 			SaveGlobalSettings()

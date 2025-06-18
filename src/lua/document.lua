@@ -596,6 +596,12 @@ function UpdateDocumentStyles()
 		name = "P"
 	}
 
+	if WantFirstLineIndents() then
+		plaintext.firstindent = 4
+	else
+		plaintext.firstindent = 0
+	end
+
 	if WantDenseParagraphLayout() then
 		plaintext.above = 0
 		plaintext.below = 0
@@ -603,7 +609,11 @@ function UpdateDocumentStyles()
 	else
 		plaintext.above = 1
 		plaintext.below = 1
-		plaintext.firstindent = 0
+		if WantFirstLineIndents() then
+			plaintext.firstindent = 4
+		else
+			plaintext.firstindent = 0
+		end
 	end
 
 	local styles =
