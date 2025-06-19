@@ -76,7 +76,7 @@ function ExportFileUsingCallbacks(document, cb)
 		oldbold = bold
 	end
 
-	for _, paragraph in ipairs(Document) do
+	for _, paragraph in ipairs(document) do
 		local name = paragraph.style
 		local style = DocumentStyles[name]
 
@@ -220,25 +220,16 @@ function ExportFileSetWithUI(filename, title, extension, callback)
 
     -- Concatenate all documents in the document set
 	local docs = { unpack(DocumentSet:getDocumentList()) }
-	local tempDocs = CreateDocumentSet()
-    for _, doc in ipairs(docs) do
-        local tempDoc = CreateDocument()
-        tempDoc.name = doc.name
-        for _, p in ipairs(doc) do
-            tempDoc[#tempDoc + 1] = p
-        end
-        tempDocs:addDocument(tempDoc, tempDoc.name)
-    end
-
-	local allDoc = tempDocs:addDocument(CreateDocument(), "all")
+	local allDoc = CreateDocument()
+	allDoc.name = "all"
 	local style = "";
-    for _, doc in ipairs(tempDocs) do
+	for _, doc in ipairs(docs) do
 		for _, p in ipairs(doc) do
 			allDoc[#allDoc+1] = p
+			-- allDoc[#allDoc+1] = "\u{00A0}\u{00A0}\u{00A0}\u{00A0}"
 			style = p.style
 		end
 		allDoc[#allDoc+1] = CreateParagraph(style, "----")
-		tempDocs:deleteDocument(doc.name)
     end
 
 	callback(writer, allDoc)
