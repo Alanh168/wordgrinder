@@ -61,6 +61,11 @@ function Cmd.ExportTextFile(filename)
 		callback)
 end
 
+function Cmd.ExportTextFileSet(filename)
+	return ExportFileSetWithUI(filename, "Export Text File", ".txt",
+		callback)
+end
+
 function Cmd.ExportToTextString(document)
 	document = document or currentDocument
 	return ExportToString(document, callback)

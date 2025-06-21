@@ -210,6 +210,60 @@ function ExportFileWithUI(filename, title, extension, callback)
 	return true
 end
 
+-- Prompts the user to export a document set, and then calls
+-- exportcb(writer, document) to actually do the work.
+
+function ExportFileSetWithUI(filename, title, extension, callback)
+    if not filename then
+        filename = DocumentSet.name or "(unnamed)"
+        if not filename:find("%..-$") then
+            filename = filename .. extension
+        else
+            filename = filename:gsub("%..-$", extension)
+        end
+
+        filename = FileBrowser(title, "Export as:", true, filename)
+        if not filename then
+            return false
+        end
+        if filename:find("/[^.]*$") then
+            filename = filename .. extension
+        end
+    end
+
+    ImmediateMessage("Exporting...")
+    local fp, e = io.open(filename, "w")
+    if not fp then
+        ModalMessage(nil, "Unable to open the output file: " .. e .. ".")
+        QueueRedraw()
+        return false
+    end
+
+    local fpw = fp.write
+    local writer = function(...)
+        fpw(fp, ...)
+    end
+
+    -- Concatenate all documents in the document set
+	local docs = { unpack(DocumentSet:getDocumentList()) }
+	local allDoc = CreateDocument()
+	allDoc.name = "all"
+	local style = "";
+	for _, doc in ipairs(docs) do
+		for _, p in ipairs(doc) do
+			allDoc[#allDoc+1] = p
+			-- allDoc[#allDoc+1] = "\u{00A0}\u{00A0}\u{00A0}\u{00A0}"
+			style = p.style
+		end
+		allDoc[#allDoc+1] = CreateParagraph(style, "----")
+    end
+
+	callback(writer, allDoc)
+    fp:close()
+    QueueRedraw()
+    return true
+end
+
 --- Converts a document into a local string.
 
 function ExportToString(document, callback)
