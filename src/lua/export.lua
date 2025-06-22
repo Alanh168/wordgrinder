@@ -222,30 +222,18 @@ function ExportFileSetWithUI(filename, title, extension, callback)
             filename = filename:gsub("%..-$", extension)
         end
 
-        filename = FileBrowser(title, "Export as:", true, filename)
+        local filename = FileBrowser(title, "Export as:", true, filename)
         if not filename then
             return false
         end
+		assert(filename)
         if filename:find("/[^.]*$") then
             filename = filename .. extension
         end
     end
 
-    ImmediateMessage("Exporting...")
-    local fp, e = io.open(filename, "w")
-    if not fp then
-        ModalMessage(nil, "Unable to open the output file: " .. e .. ".")
-        QueueRedraw()
-        return false
-    end
-
-    local fpw = fp.write
-    local writer = function(...)
-        fpw(fp, ...)
-    end
-
-    -- Concatenate all documents in the document set
-	local docs = { unpack(DocumentSet:getDocumentList()) }
+	 -- Concatenate all documents in the document set
+	local docs = { DocumentSet:getDocumentList() }
 	local allDoc = CreateDocument()
 	allDoc.name = "all"
 	local style = "";
@@ -258,8 +246,29 @@ function ExportFileSetWithUI(filename, title, extension, callback)
 		allDoc[#allDoc+1] = CreateParagraph(style, "----")
     end
 
-	callback(writer, allDoc)
-    fp:close()
+    ImmediateMessage("Exporting "..filename.."...")
+	local docs = { DocumentSet:getDocumentList() }
+	local style = "";
+	local data: {string} = {}
+	local writer = function(...: string)
+		for _, doc in ipairs(docs) do
+			for _, s in ipairs(doc) do
+				data[#data+1] = s
+				-- allDoc[#allDoc+1] = "\u{00A0}\u{00A0}\u{00A0}\u{00A0}"
+				style = s.style
+			end
+			data[#data+1] = "----"
+   		 end
+	end
+	callback(writer, currentDocument)
+
+	local _, e = WriteFile(filename, table.concat(data))
+    if e then
+        ModalMessage(nil, "Unable to open the output file: " .. e .. ".")
+        QueueRedraw()
+        return false
+    end
+
     QueueRedraw()
     return true
 end
