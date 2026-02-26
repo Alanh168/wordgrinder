@@ -1,3 +1,14 @@
 .obj/
 bin/
 *.swp
+
+# macOS
+.DS_Store
+
+# Build system
+.ninja_log
+
+# Personal dev / IDE files
+.vscode/
+wordgrinder.code-workspace
+scripts/docsetexport.lua
