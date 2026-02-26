@@ -77,7 +77,11 @@ local function submenu(menu)
 	end
 end
 
-local DocumentsMenu = CreateMenu("Documents", {})
+local DocumentsMenu = CreateMenu("Current Doc Set", {})
+local DocumentSetsMenu = CreateMenu("Document Sets",
+{
+	{"DSC", "C", "Current ▷",   nil,  DocumentsMenu},
+})
 local ParagraphStylesMenu = CreateMenu("Paragraph Styles", {})
 
 local cp = Cmd.Checkpoint
@@ -247,7 +251,7 @@ local MainMenu = CreateMenu("Main Menu",
 	{"F",  "F", "File ▷",           nil,  FileMenu},
 	{"E",  "E", "Edit ▷",           nil,  EditMenu},
 	{"S",  "S", "Style ▷",          nil,  StyleMenu},
-	{"D",  "D", "Documents ▷",      nil,  DocumentsMenu},
+	{"D",  "D", "Document Sets ▷",   nil,  DocumentSetsMenu},
 	{"Z",  "Z", "Navigation ▷",     nil,  NavigationMenu}
 })
 
@@ -599,7 +603,7 @@ function RebuildDocumentsMenu(documents)
 
 	-- Hook it.
 
-	CreateMenu("Documents", m, DocumentsMenu)
+	CreateMenu("Current", m, DocumentsMenu)
 end
 
 function ListMenuItems()
