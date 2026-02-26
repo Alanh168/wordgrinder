@@ -146,11 +146,11 @@ local DocumentMenu = CreateMenu("Document",
 
 local FileMenu = CreateMenu("File",
 {
-	{"FN",         "N", "New document set",          nil,         Cmd.CreateBlankDocumentSet},
-	{"FO",         "O", "Load document set...",      nil,         Cmd.LoadDocumentSet},
+	{"FN",         "N", "New project",               nil,         Cmd.CreateBlankDocumentSet},
+	{"FO",         "O", "Load project...",           nil,         Cmd.LoadDocumentSet},
 	{"FS",         "S", "Save project",         "^S",        Cmd.SaveCurrentDocument},
 	{"FA",         "A", "Save project as...",   nil,         Cmd.SaveCurrentDocumentAs},
-	{"FR",         "R", "Load recent document ▷",    nil,         Cmd.LoadRecentDocument},
+	{"FR",         "R", "Load recent project ▷",     nil,         Cmd.LoadRecentDocument},
 	"-",
 	{"FCtemplate", "C", "Create from template...",   nil,         Cmd.CreateDocumentSetFromTemplate},
 	{"FMtemplate", "M", "Save as template...",       nil,         Cmd.SaveCurrentDocumentAsTemplate},
@@ -381,6 +381,31 @@ MenuClass = {
 	runmenu = function(self, x, y, menu)
 		local n = 1
 		local top = 1
+		local function is_selectable(i)
+			return menu[i] and (type(menu[i]) ~= "string")
+		end
+		local function seek_selectable(start, delta)
+			local i = start
+			while (i >= 1) and (i <= #menu) do
+				if is_selectable(i) then
+					return i
+				end
+				i = i + delta
+			end
+			return nil
+		end
+		local function move_cursor(delta)
+			local next_i = seek_selectable(n + delta, delta)
+			if next_i then
+				n = next_i
+			end
+		end
+		if not is_selectable(n) then
+			local first = seek_selectable(1, 1)
+			if first then
+				n = first
+			end
+		end
 
 		local function stackmenu(newmenu)
 			return nil
@@ -400,20 +425,22 @@ MenuClass = {
 
 				self:drawmenu(x, y, menu, n, top)
 
-				local c = GetChar():upper()
-				if (c == "KEY_RESIZE") then
-					ResizeScreen()
-					RedrawScreen()
-					self:drawmenustack()
-				elseif (c == "KEY_UP") and (n > 1) then
-					n = n - 1
-				elseif (c == "KEY_DOWN") and (n < #menu) then
-					n = n + 1
-				elseif (c == "KEY_PGDN") then
-					n = int(min(n + visiblelen/2, #menu))
-				elseif (c == "KEY_PGUP") then
-					n = int(max(n - visiblelen/2, 1))
-				elseif (c == "KEY_RETURN") or (c == "KEY_RIGHT") then
+					local c = GetChar():upper()
+					if (c == "KEY_RESIZE") then
+						ResizeScreen()
+						RedrawScreen()
+						self:drawmenustack()
+					elseif (c == "KEY_UP") then
+						move_cursor(-1)
+					elseif (c == "KEY_DOWN") then
+						move_cursor(1)
+					elseif (c == "KEY_PGDN") then
+						local target = int(min(n + visiblelen/2, #menu))
+						n = seek_selectable(target, 1) or seek_selectable(target, -1) or n
+					elseif (c == "KEY_PGUP") then
+						local target = int(max(n - visiblelen/2, 1))
+						n = seek_selectable(target, -1) or seek_selectable(target, 1) or n
+					elseif (c == "KEY_RETURN") or (c == "KEY_RIGHT") then
 					if (type(menu[n]) ~= "string") then
 						item = menu[n]
 						break
