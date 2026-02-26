@@ -82,8 +82,14 @@ local function redrawstatus()
 	local y = ScreenHeight - 1
 
 	if DocumentSet.statusbar then
+		local displayName
+		if LastLoadedDraftName then
+			displayName = LastLoadedDraftName .. " "
+		else
+			displayName = (Leafname(DocumentSet.name or "(unnamed)")):gsub("%.wg$", " ")
+		end
 		local s = {
-			Leafname(DocumentSet.name or "(unnamed)"),
+			displayName,
 			"[",
 			Document.name or "",
 			"] ",

@@ -70,9 +70,11 @@ end
 
 local function submenu(menu)
 	for _, item in ipairs(menu) do
-		menu_tab[item.id] = nil
-		if item.ak then
-			key_tab[item.ak] = nil
+		if type(item) == "table" then
+			menu_tab[item.id] = nil
+			if item.ak then
+				key_tab[item.ak] = nil
+			end
 		end
 	end
 end
@@ -80,7 +82,10 @@ end
 local DocumentsMenu = CreateMenu("Current Doc Set", {})
 local DocumentSetsMenu = CreateMenu("Document Sets",
 {
-	{"DSC", "C", "Current ▷",   nil,  DocumentsMenu},
+	{"DSC",    "C", "Current ▷",     nil, DocumentsMenu},
+	"-",
+	{"DSSAVE", "S", "Save Set as...", nil, function() Cmd.ManageDraftSetsUI() end},
+	{"DSLOAD", "L", "Load Set",       nil, function() Cmd.LoadDraftSetUI() end},
 })
 local ParagraphStylesMenu = CreateMenu("Paragraph Styles", {})
 
@@ -135,8 +140,8 @@ local FileMenu = CreateMenu("File",
 {
 	{"FN",         "N", "New document set",          nil,         Cmd.CreateBlankDocumentSet},
 	{"FO",         "O", "Load document set...",      nil,         Cmd.LoadDocumentSet},
-	{"FS",         "S", "Save document set",         "^S",        Cmd.SaveCurrentDocument},
-	{"FA",         "A", "Save document set as...",   nil,         Cmd.SaveCurrentDocumentAs},
+	{"FS",         "S", "Save project",         "^S",        Cmd.SaveCurrentDocument},
+	{"FA",         "A", "Save project as...",   nil,         Cmd.SaveCurrentDocumentAs},
 	{"FR",         "R", "Load recent document ▷",    nil,         Cmd.LoadRecentDocument},
 	"-",
 	{"FCtemplate", "C", "Create from template...",   nil,         Cmd.CreateDocumentSetFromTemplate},
@@ -604,6 +609,32 @@ function RebuildDocumentsMenu(documents)
 	-- Hook it.
 
 	CreateMenu("Current", m, DocumentsMenu)
+end
+
+function RebuildDocumentSetsMenu()
+	submenu(DocumentSetsMenu)
+
+	local m = {}
+	m[#m+1] = {"DSC", "C", "Current ▷", nil, DocumentsMenu}
+
+	local drafts = GlobalSettings and GlobalSettings.drafts or {}
+	for i, draft in ipairs(drafts) do
+		local path = draft.path
+		local draftName = draft.name
+		m[#m+1] = {"DSD"..i, nil, draft.name, nil, function()
+			local origName = DocumentSet.name
+			if Cmd.LoadDocumentSet(path) then
+				DocumentSet.name = origName
+				LastLoadedDraftName = draftName
+			end
+		end}
+	end
+
+	m[#m+1] = "-"
+	m[#m+1] = {"DSSAVE", "S", "Save Set as...", nil, function() Cmd.ManageDraftSetsUI() end}
+	m[#m+1] = {"DSLOAD", "L", "Load Set",       nil, function() Cmd.LoadDraftSetUI() end}
+
+	CreateMenu("Document Sets", m, DocumentSetsMenu)
 end
 
 function ListMenuItems()

@@ -522,6 +522,7 @@ emit("build ", OBJDIR.."/luascripts.c: luascripts ", table.concat({
     "src/lua/addons/goto.lua",
     "src/lua/addons/autosave.lua",
     "src/lua/addons/docsetman.lua",
+    "src/lua/addons/draftmanager.lua",
     "src/lua/addons/scrapbook.lua",
     "src/lua/addons/statusbar_charstyle.lua",
     "src/lua/addons/statusbar_pagecount.lua",
