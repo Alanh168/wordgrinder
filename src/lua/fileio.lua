@@ -481,7 +481,13 @@ function loadfromstreamt(fp)
 		end
 
 		if line:find("^%.") then
-			local _, _, k, p, v = line:find("^(.*)%.([^.:]+): (.*)$")
+			-- Split on the first ": " so that string values containing
+			-- ".key: " patterns (e.g. embedded .wg file content) don't
+			-- confuse the greedy-regex approach.
+			local sep = line:find(": ", 1, true)
+			local lhs = sep and line:sub(1, sep-1) or ""
+			local v   = sep and line:sub(sep+2)   or ""
+			local k, p = lhs:match("^(.*)%.([^.]+)$")
 
 			-- This is setting a property value.
 			local o = data

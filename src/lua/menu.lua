@@ -617,16 +617,11 @@ function RebuildDocumentSetsMenu()
 	local m = {}
 	m[#m+1] = {"DSC", "C", "Current ▷", nil, DocumentsMenu}
 
-	local drafts = GlobalSettings and GlobalSettings.drafts or {}
+	local drafts = DocumentSet and DocumentSet.addons and DocumentSet.addons.drafts or {}
 	for i, draft in ipairs(drafts) do
-		local path = draft.path
-		local draftName = draft.name
+		local draftRef = draft
 		m[#m+1] = {"DSD"..i, nil, draft.name, nil, function()
-			local origName = DocumentSet.name
-			if Cmd.LoadDocumentSet(path) then
-				DocumentSet.name = origName
-				LastLoadedDraftName = draftName
-			end
+			LoadDraft(draftRef)
 		end}
 	end
 
