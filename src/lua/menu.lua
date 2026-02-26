@@ -80,7 +80,7 @@ local function submenu(menu)
 end
 
 local DocumentsMenu = CreateMenu("Current Doc Set", {})
-local DocumentSetsMenu = CreateMenu("Document Sets",
+local DraftsMenu = CreateMenu("Drafts",
 {
 	{"DSC",    "C", "Current ▷",     nil, DocumentsMenu},
 	"-",
@@ -136,6 +136,16 @@ local GlobalSettingsMenu = CreateMenu("Global settings",
 	{"FSDebug",       "X", "Debugging options...",    nil,         Cmd.ConfigureDebug},
 })
 
+local DocumentMenu = CreateMenu("Document",
+{
+	{"DC",         "C", "Current ▷",              nil,         DocumentsMenu},
+	"-",
+	{"Ddocman",    "M", "Manage documents...",    nil,         Cmd.ManageDocumentsUI},
+	{"DB",         "B", "Add new blank document", nil,         Cmd.AddBlankDocument},
+	{"DI",         "I", "Import new document ▷",  nil,         ImportMenu},
+	{"DE",         "E", "Export current document ▷", nil,      ExportMenu},
+})
+
 local FileMenu = CreateMenu("File",
 {
 	{"FN",         "N", "New document set",          nil,         Cmd.CreateBlankDocumentSet},
@@ -147,11 +157,7 @@ local FileMenu = CreateMenu("File",
 	{"FCtemplate", "C", "Create from template...",   nil,         Cmd.CreateDocumentSetFromTemplate},
 	{"FMtemplate", "M", "Save as template...",       nil,         Cmd.SaveCurrentDocumentAsTemplate},
 	"-",
-	{"FB",         "B", "Add new blank document",    nil,         Cmd.AddBlankDocument},
-	{"FI",         "I", "Import new document ▷",     nil,         ImportMenu},
-	{"FE",         "E", "Export current document ▷", nil,         ExportMenu},
 	{"FD",         "F", "Export document set >",     nil,         ExportSetMenu},
-	{"Fdocman",    "D", "Manage documents...",       nil,         Cmd.ManageDocumentsUI},
 	"-",
 	{"Fsettings",  "T", "Document settings ▷",       nil,         DocumentSettingsMenu},
 	{"Fglobals",   "G", "Global settings ▷",         nil,         GlobalSettingsMenu},
@@ -256,7 +262,8 @@ local MainMenu = CreateMenu("Main Menu",
 	{"F",  "F", "File ▷",           nil,  FileMenu},
 	{"E",  "E", "Edit ▷",           nil,  EditMenu},
 	{"S",  "S", "Style ▷",          nil,  StyleMenu},
-	{"D",  "D", "Document Sets ▷",   nil,  DocumentSetsMenu},
+	{"D",  "D", "Document ▷",       nil,  DocumentMenu},
+	{"A",  "A", "Drafts ▷",         nil,  DraftsMenu},
 	{"Z",  "Z", "Navigation ▷",     nil,  NavigationMenu}
 })
 
@@ -612,7 +619,7 @@ function RebuildDocumentsMenu(documents)
 end
 
 function RebuildDocumentSetsMenu()
-	submenu(DocumentSetsMenu)
+	submenu(DraftsMenu)
 
 	local m = {}
 	m[#m+1] = {"DSC", "C", "Current ▷", nil, DocumentsMenu}
@@ -629,7 +636,7 @@ function RebuildDocumentSetsMenu()
 	m[#m+1] = {"DSSAVE", "S", "Save Set as...", nil, function() Cmd.ManageDraftSetsUI() end}
 	m[#m+1] = {"DSLOAD", "L", "Load Set",       nil, function() Cmd.LoadDraftSetUI() end}
 
-	CreateMenu("Document Sets", m, DocumentSetsMenu)
+	CreateMenu("Drafts", m, DraftsMenu)
 end
 
 function ListMenuItems()
@@ -648,4 +655,3 @@ function ListMenuItems()
 	io.stdout:write("All supported menu items:\n\n")
 	list(MainMenu)
 end
-
