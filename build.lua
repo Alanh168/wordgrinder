@@ -90,9 +90,21 @@ local function addname(exe, name)
     return exe:gsub("^([^.]*)", "%1-"..name)
 end
 
+local function preferred_release_name(exe, luapackage, frontend, buildstyle)
+    local name = package_name(luapackage).."-"..frontend.."-"..buildstyle
+
+    if (exe == "bin/wordgrinder")
+        and (frontend == "curses")
+        and (buildstyle == "release")
+        and (package_name(luapackage) == package_name(LUA_PACKAGE)) then
+        return "bin/wordgrinder-test", name
+    end
+
+    return addname(exe, name), name
+end
+
 function build_wordgrinder_binary(exe, luapackage, frontend, buildstyle)
-    name = package_name(luapackage).."-"..frontend.."-"..buildstyle
-    exe = addname(exe, name)
+    exe, name = preferred_release_name(exe, luapackage, frontend, buildstyle)
     allbinaries[#allbinaries+1] = exe
 
     local cflags = {
@@ -312,8 +324,7 @@ function build_wordgrinder_binary(exe, luapackage, frontend, buildstyle)
 end
 
 function run_wordgrinder_tests(exe, luapackage, frontend, buildstyle, noauto)
-    name = package_name(luapackage).."-"..frontend.."-"..buildstyle
-    exe = addname(exe, name)
+    exe, name = preferred_release_name(exe, luapackage, frontend, buildstyle)
     if not noauto then
         allbinaries[#allbinaries+1] = "test-"..name
     end
@@ -584,7 +595,7 @@ if want_frontend("x11") or want_frontend("curses") then
     local preferred_curses
     local preferred_x11
     if want_frontend("curses") then
-        preferred_curses = "bin/wordgrinder-"..package_name(LUA_PACKAGE).."-curses-release"
+        preferred_curses = preferred_release_name("bin/wordgrinder", LUA_PACKAGE, "curses", "release")
         preferred_test = "test-"..package_name(LUA_PACKAGE).."-curses-debug"
 
         preferred_curses = strip_binary(preferred_curses)
@@ -642,4 +653,3 @@ emit("build clean: phony")
 emit("build dev: phony ", table.concat(allbinaries, " "))
 
 -- vim: sw=4 ts=4 et
-
