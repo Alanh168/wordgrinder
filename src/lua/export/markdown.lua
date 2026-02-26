@@ -119,3 +119,7 @@ function Cmd.ExportToMarkdownString()
 	return ExportToString(Document, callback)
 end
 
+function Cmd.ExportMarkdownFileSet(filename)
+	return ExportFileSetWithUI(filename, "Export Markdown File", ".md", callback)
+end
+

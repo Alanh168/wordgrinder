@@ -101,15 +101,11 @@ local ExportMenu = CreateMenu("Export current document",
 --	{"FErtf",  "R", "Export to Rtf...",          nil,         Cmd.ExportRTFFile},
 })
 
-local ExportSetMenu = CreateMenu("Export current document set",
+local ExportSetMenu = CreateMenu("Export document set",
 {
---	{"FDodt",  "O", "Export to ODT...",          nil,         Cmd.ExportODTFile},
---	{"FDhtml", "H", "Export to HTML...",         nil,         Cmd.ExportHTMLFile},
---	{"FDmd",   "M", "Export to Markdown...",     nil,         Cmd.ExportMarkdownFile},
+	{"FDhtml", "H", "Export to HTML...",         nil,         Cmd.ExportHTMLFileSet},
+	{"FDmd",   "M", "Export to Markdown...",     nil,         Cmd.ExportMarkdownFileSet},
 	{"FDtxt",  "T", "Export to plain text...",   nil,         Cmd.ExportTextFileSet},
---	{"FDtex",  "L", "Export to LaTeX...",        nil,         Cmd.ExportLatexFile},
---	{"FDtr",   "F", "Export to Troff...",        nil,         Cmd.ExportTroffFile},
---	{"FErtf",  "R", "Export to Rtf...",          nil,         Cmd.ExportRTFFile},
 })
 
 local DocumentSettingsMenu = CreateMenu("Document settings",

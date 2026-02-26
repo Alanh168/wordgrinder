@@ -223,13 +223,15 @@ function ExportFileSetWithUI(filename, title, extension, callback)
 	local allDoc = CreateDocument()
 	allDoc.name = "all"
 	local style = "";
+	local scrapbookName = DocumentSet.addons.scrapbook and DocumentSet.addons.scrapbook.document
 	for _, doc in ipairs(docs) do
-		for _, p in ipairs(doc) do
-			allDoc[#allDoc+1] = p
-			-- allDoc[#allDoc+1] = "\u{00A0}\u{00A0}\u{00A0}\u{00A0}"
-			style = p.style
+		if doc.name ~= scrapbookName then
+			for _, p in ipairs(doc) do
+				allDoc[#allDoc+1] = p
+				style = p.style
+			end
+			allDoc[#allDoc+1] = CreateParagraph(style, "----")
 		end
-		allDoc[#allDoc+1] = CreateParagraph(style, "----")
     end
 
 	callback(writer, allDoc)

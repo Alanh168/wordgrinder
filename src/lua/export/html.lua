@@ -162,6 +162,11 @@ function Cmd.ExportToHTMLString()
 	return ExportToString(Document, callback)
 end
 
+function Cmd.ExportHTMLFileSet(filename)
+	return ExportFileSetWithUI(filename, "Export HTML File", ".html",
+		callback)
+end
+
 -----------------------------------------------------------------------------
 -- Addon registration. Set the HTML export settings.
 
