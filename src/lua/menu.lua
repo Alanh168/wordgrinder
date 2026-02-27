@@ -82,6 +82,8 @@ end
 local DocumentsMenu = CreateMenu("Current Doc Set", {})
 local DraftsMenu = CreateMenu("Drafts",
 {
+	{"DSMAN",  "M", "Manage drafts...", nil, function() Cmd.ManageDraftComparisonUI() end},
+	"-",
 	{"DSSAVE", "S", "Save Set as...", nil, function() Cmd.ManageDraftSetsUI() end},
 	{"DSLOAD", "L", "Load Set",       nil, function() Cmd.LoadDraftSetUI() end},
 })
@@ -703,6 +705,8 @@ function RebuildDocumentSetsMenu()
 	if #m > 0 then
 		m[#m+1] = "-"
 	end
+	m[#m+1] = {"DSMAN", "M", "Manage drafts...", nil, function() Cmd.ManageDraftComparisonUI() end}
+	m[#m+1] = "-"
 	m[#m+1] = {"DSSAVE", "S", "Save Set as...", nil, function() Cmd.ManageDraftSetsUI() end}
 	m[#m+1] = {"DSLOAD", "L", "Load Set",       nil, function() Cmd.LoadDraftSetUI() end}
 

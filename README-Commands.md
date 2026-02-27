@@ -3,6 +3,9 @@ brew install lua ninja pkg-config ncurses pillow SDL2_ttf dylibbundler opengl
 
 # Install
 sudo gmake -lncursesw
+## zsh:killed issue
+if you ever get zsh: killed again after a rebuild, just run:
+codesign -s - ~/repos/writing-env/wordgrinder/bin/wordgrinder-test
 
 # Export Scripts
 
@@ -19,3 +22,4 @@ sudo env
     CXXFLAGS="-O2 -std=c++17 -I$(xcrun --show-sdk-path)/usr/include/c++/v1" 
     LDFLAGS="-L/opt/homebrew/opt/llvm/lib -lunwind" 
     sudo gmake clean all
+
