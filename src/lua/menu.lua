@@ -400,10 +400,27 @@ MenuClass = {
 				n = next_i
 			end
 		end
+		local function fire_highlight()
+			if menu.onhighlight and is_selectable(n) then
+				menu.onhighlight(menu[n])
+				self:drawmenustack()
+			end
+		end
 		if not is_selectable(n) then
 			local first = seek_selectable(1, 1)
 			if first then
 				n = first
+			end
+		end
+
+		-- Notify menu that it's being entered (for save/restore)
+		if menu.onenter then
+			menu.onenter()
+		end
+
+		local function cancel_menu()
+			if menu.oncancel then
+				menu.oncancel()
 			end
 		end
 
@@ -432,24 +449,31 @@ MenuClass = {
 						self:drawmenustack()
 					elseif (c == "KEY_UP") then
 						move_cursor(-1)
+						fire_highlight()
 					elseif (c == "KEY_DOWN") then
 						move_cursor(1)
+						fire_highlight()
 					elseif (c == "KEY_PGDN") then
 						local target = int(min(n + visiblelen/2, #menu))
 						n = seek_selectable(target, 1) or seek_selectable(target, -1) or n
+						fire_highlight()
 					elseif (c == "KEY_PGUP") then
 						local target = int(max(n - visiblelen/2, 1))
 						n = seek_selectable(target, -1) or seek_selectable(target, 1) or n
+						fire_highlight()
 					elseif (c == "KEY_RETURN") or (c == "KEY_RIGHT") then
 					if (type(menu[n]) ~= "string") then
 						item = menu[n]
 						break
 					end
 				elseif (c == "KEY_LEFT") then
+					cancel_menu()
 					return nil
 				elseif (c == "KEY_ESCAPE") then
+					cancel_menu()
 					return false
 				elseif (c == "KEY_^C") then
+					cancel_menu()
 					return false
 				elseif (c == "KEY_^X") then
 					local item = menu[n]
@@ -641,6 +665,26 @@ function RebuildDocumentsMenu(documents)
 	-- Hook it.
 
 	CreateMenu("Current", m, DocumentsMenu)
+
+	-- Live preview: switch document when navigating with arrow keys
+	local savedDocument = nil
+
+	DocumentsMenu.onenter = function()
+		savedDocument = Document.name
+	end
+
+	DocumentsMenu.onhighlight = function(item)
+		if item and item.fn then
+			RunMenuAction(item.fn)
+		end
+	end
+
+	DocumentsMenu.oncancel = function()
+		if savedDocument then
+			Cmd.ChangeDocument(savedDocument)
+			savedDocument = nil
+		end
+	end
 end
 
 function RebuildDocumentSetsMenu()
