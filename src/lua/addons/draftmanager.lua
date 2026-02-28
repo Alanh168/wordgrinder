@@ -10,6 +10,7 @@ local GetChar = wg.getchar
 local SetNormal = wg.setnormal
 local SetBright = wg.setbright
 local SetReverse = wg.setreverse
+local SetUnderline = wg.setunderline
 local SetRed = wg.setred
 local GetBoundedString = wg.getboundedstring
 local GetStringWidth = wg.getstringwidth
@@ -731,7 +732,10 @@ local function drawPreviewLine(x, y, w, line, wordMasks, mode)
 						SetBright()
 						SetReverse()
 					else
+						SetBright()
+						SetReverse()
 						SetRed()
+						SetUnderline()
 					end
 				end
 
