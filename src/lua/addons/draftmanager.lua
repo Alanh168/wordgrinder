@@ -566,112 +566,124 @@ local function utf8chars(s)
 	return chars
 end
 
--- Build a flat table of UTF-8 codepoints from word list, with spaces between words.
--- Returns: chars (table of codepoint strings), wordRanges[wi] = {start, finish}
-local function buildCharSequence(words)
-	local chars = {}
-	local ranges = {}
-	for wi = 1, #words do
-		if wi > 1 then
-			chars[#chars + 1] = " "
-		end
-		local startIdx = #chars + 1
-		local wchars = utf8chars(words[wi])
-		for _, c in ipairs(wchars) do
-			chars[#chars + 1] = c
-		end
-		ranges[wi] = { start = startIdx, finish = #chars }
+local function buildFullCharMask(text)
+	local mask = {}
+	for i = 1, #utf8chars(text) do
+		mask[i] = true
 	end
-	return chars, ranges
+	return mask
 end
 
--- Character-level LCS producing per-character keep masks for both sides.
--- Works with UTF-8 codepoints (not raw bytes).
--- Returns leftCharKept[charIdx]=true, rightCharKept[charIdx]=true,
---         plus the wordRanges for mapping back.
-local function lcsCharMasks(leftWords, rightWords)
-	local leftChars, leftRanges = buildCharSequence(leftWords)
-	local rightChars, rightRanges = buildCharSequence(rightWords)
+local function buildTrimmedCharMasks(leftWord, rightWord)
+	local leftChars = utf8chars(leftWord)
+	local rightChars = utf8chars(rightWord)
+	local leftLen = #leftChars
+	local rightLen = #rightChars
 
-	local ln = #leftChars
-	local rn = #rightChars
-
-	local leftCharKept = {}
-	local rightCharKept = {}
-
-	-- For very long texts, fall back to word-level LCS
-	if ln * rn > 2000000 then
-		local wln = #leftWords
-		local wrn = #rightWords
-		local dp = {}
-		for i = 0, wln + 1 do dp[i] = {} end
-		for i = wln, 1, -1 do
-			for j = wrn, 1, -1 do
-				if leftWords[i] == rightWords[j] then
-					dp[i][j] = (dp[i + 1][j + 1] or 0) + 1
-				else
-					local d = dp[i + 1][j] or 0
-					local r = dp[i][j + 1] or 0
-					dp[i][j] = (d > r) and d or r
-				end
-			end
-		end
-		local i, j = 1, 1
-		while (i <= wln) and (j <= wrn) do
-			if leftWords[i] == rightWords[j] then
-				local lr = leftRanges[i]
-				for c = lr.start, lr.finish do leftCharKept[c] = true end
-				local rr = rightRanges[j]
-				for c = rr.start, rr.finish do rightCharKept[c] = true end
-				i = i + 1; j = j + 1
-			else
-				local d = dp[i + 1][j] or 0
-				local r = dp[i][j + 1] or 0
-				if d >= r then i = i + 1 else j = j + 1 end
-			end
-		end
-		return leftCharKept, rightCharKept, leftRanges, rightRanges
+	local prefix = 0
+	while (prefix < leftLen) and (prefix < rightLen)
+		and (leftChars[prefix + 1] == rightChars[prefix + 1]) do
+		prefix = prefix + 1
 	end
 
-	-- Character-level LCS using full DP table (comparing UTF-8 codepoints)
+	local leftRemain = leftLen - prefix
+	local rightRemain = rightLen - prefix
+	local suffix = 0
+	while (suffix < leftRemain) and (suffix < rightRemain)
+		and (leftChars[leftLen - suffix] == rightChars[rightLen - suffix]) do
+		suffix = suffix + 1
+	end
+
+	local leftMask = {}
+	for i = prefix + 1, leftLen - suffix do
+		leftMask[i] = true
+	end
+
+	local rightMask = {}
+	for i = prefix + 1, rightLen - suffix do
+		rightMask[i] = true
+	end
+
+	return leftMask, rightMask
+end
+
+local function buildWordDiffMasks(leftWords, rightWords)
+	local leftMasks = {}
+	local rightMasks = {}
+	local leftCount = #leftWords
+	local rightCount = #rightWords
+
 	local dp = {}
-	for i = 0, ln do
+	for i = 0, leftCount + 1 do
 		dp[i] = {}
-		for j = 0, rn do
-			dp[i][j] = 0
-		end
 	end
-	for i = 1, ln do
-		for j = 1, rn do
-			if leftChars[i] == rightChars[j] then
-				dp[i][j] = dp[i-1][j-1] + 1
+
+	for i = leftCount, 1, -1 do
+		for j = rightCount, 1, -1 do
+			if leftWords[i] == rightWords[j] then
+				dp[i][j] = (dp[i + 1][j + 1] or 0) + 1
 			else
-				local u = dp[i-1][j]
-				local l = dp[i][j-1]
-				dp[i][j] = (u > l) and u or l
+				local dropLeft = dp[i + 1][j] or 0
+				local dropRight = dp[i][j + 1] or 0
+				dp[i][j] = (dropLeft > dropRight) and dropLeft or dropRight
 			end
 		end
 	end
 
-	-- Trace back
-	local i, j = ln, rn
-	while i > 0 and j > 0 do
-		if leftChars[i] == rightChars[j] then
-			leftCharKept[i] = true
-			rightCharKept[j] = true
-			i = i - 1
-			j = j - 1
-		elseif dp[i-1][j] >= dp[i][j-1] then
-			i = i - 1
-		else
-			j = j - 1
+	local function markRun(leftStart, leftFinish, rightStart, rightFinish)
+		local leftLen = max(0, leftFinish - leftStart + 1)
+		local rightLen = max(0, rightFinish - rightStart + 1)
+		local paired = min(leftLen, rightLen)
+
+		for offset = 0, paired - 1 do
+			local leftIdx = leftStart + offset
+			local rightIdx = rightStart + offset
+			local leftMask, rightMask = buildTrimmedCharMasks(leftWords[leftIdx], rightWords[rightIdx])
+			if next(leftMask) then
+				leftMasks[leftIdx] = leftMask
+			end
+			if next(rightMask) then
+				rightMasks[rightIdx] = rightMask
+			end
+		end
+
+		for offset = paired, leftLen - 1 do
+			local leftIdx = leftStart + offset
+			leftMasks[leftIdx] = buildFullCharMask(leftWords[leftIdx])
+		end
+
+		for offset = paired, rightLen - 1 do
+			local rightIdx = rightStart + offset
+			rightMasks[rightIdx] = buildFullCharMask(rightWords[rightIdx])
 		end
 	end
 
-	return leftCharKept, rightCharKept, leftRanges, rightRanges
+	local leftRunStart = 1
+	local rightRunStart = 1
+	local i, j = 1, 1
+	while (i <= leftCount) and (j <= rightCount) do
+		if leftWords[i] == rightWords[j] then
+			markRun(leftRunStart, i - 1, rightRunStart, j - 1)
+			i = i + 1
+			j = j + 1
+			leftRunStart = i
+			rightRunStart = j
+		else
+			local dropLeft = dp[i + 1][j] or 0
+			local dropRight = dp[i][j + 1] or 0
+			if dropLeft >= dropRight then
+				i = i + 1
+			else
+				j = j + 1
+			end
+		end
+	end
+
+	markRun(leftRunStart, leftCount, rightRunStart, rightCount)
+	return leftMasks, rightMasks
 end
 
-local function drawPreviewLine(x, y, w, line, charKept, wordRanges, mode)
+local function drawPreviewLine(x, y, w, line, wordMasks, mode)
 	SetNormal()
 	Write(x, y, string.rep(" ", w))
 
@@ -694,9 +706,9 @@ local function drawPreviewLine(x, y, w, line, charKept, wordRanges, mode)
 
 		local text = item.text
 		local wordIdx = item.idx
-		local range = wordRanges and wordRanges[wordIdx]
+		local wordMask = wordMasks and wordMasks[wordIdx]
 
-		if not charKept or not range then
+		if not wordMask then
 			-- No diff data; render plain
 			SetNormal()
 			local segment = GetBoundedString(text, w - (cx - x))
@@ -710,10 +722,9 @@ local function drawPreviewLine(x, y, w, line, charKept, wordRanges, mode)
 			for ci = 1, #uchars do
 				if (cx - x) >= w then break end
 				local ch = uchars[ci]
-				local charIdx = range.start + ci - 1
-				local kept = charKept[charIdx]
+				local changed = wordMask[ci]
 
-				if kept then
+				if not changed then
 					SetNormal()
 				else
 					if mode == "current" then
@@ -749,10 +760,8 @@ function Cmd.ManageDraftComparisonUI()
 	local commonNames = {}
 	local leftPreview = { lines = {}, words = {} }
 	local rightPreview = { lines = {}, words = {} }
-	local leftCharKept = {}
-	local rightCharKept = {}
-	local leftWordRanges = {}
-	local rightWordRanges = {}
+	local leftWordMasks = {}
+	local rightWordMasks = {}
 	local loadError = nil
 
 	local function clampState(previewHeight)
@@ -786,10 +795,8 @@ function Cmd.ManageDraftComparisonUI()
 		local function rebuildRows(previewWidth)
 			leftPreview = { lines = {}, words = {} }
 			rightPreview = { lines = {}, words = {} }
-			leftCharKept = {}
-			rightCharKept = {}
-			leftWordRanges = {}
-			rightWordRanges = {}
+			leftWordMasks = {}
+			rightWordMasks = {}
 
 			if (not selectedDraftSet) or (#commonNames == 0) then
 				return
@@ -804,7 +811,7 @@ function Cmd.ManageDraftComparisonUI()
 
 			leftPreview = buildPreview(leftDoc, previewWidth)
 			rightPreview = buildPreview(rightDoc, previewWidth)
-			leftCharKept, rightCharKept, leftWordRanges, rightWordRanges = lcsCharMasks(leftPreview.words, rightPreview.words)
+			leftWordMasks, rightWordMasks = buildWordDiffMasks(leftPreview.words, rightPreview.words)
 		end
 
 	local function loadSelectedDraft(previewWidth)
@@ -814,10 +821,8 @@ function Cmd.ManageDraftComparisonUI()
 			commonNames = {}
 			leftPreview = { lines = {}, words = {} }
 			rightPreview = { lines = {}, words = {} }
-			leftCharKept = {}
-			rightCharKept = {}
-			leftWordRanges = {}
-			rightWordRanges = {}
+			leftWordMasks = {}
+			rightWordMasks = {}
 
 		local draft = drafts[draftCursor]
 		if not draft then
@@ -909,8 +914,8 @@ function Cmd.ManageDraftComparisonUI()
 					local idx = scrollOffset + row
 					local leftLine = leftPreview.lines[idx]
 					local rightLine = rightPreview.lines[idx]
-					drawPreviewLine(leftX + 1, previewInnerY + row - 1, textW, leftLine, leftCharKept, leftWordRanges, "current")
-					drawPreviewLine(rightX + 1, previewInnerY + row - 1, textW, rightLine, rightCharKept, rightWordRanges, "draft")
+					drawPreviewLine(leftX + 1, previewInnerY + row - 1, textW, leftLine, leftWordMasks, "current")
+					drawPreviewLine(rightX + 1, previewInnerY + row - 1, textW, rightLine, rightWordMasks, "draft")
 				end
 			end
 
