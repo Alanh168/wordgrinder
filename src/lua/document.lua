@@ -387,7 +387,8 @@ ParagraphClass =
 				word = w,
 				ostyle = ostyle,
 				cstyle = cstyle,
-				firstword = self.sentences[wn]
+				firstword = self.sentences[wn],
+				paragraphfirstword = (wn == 1)
 			}
 			FireEvent(Event.DrawWord, payload)
 
@@ -446,7 +447,8 @@ ParagraphClass =
 				word = self[w],
 				ostyle = ostyle,
 				cstyle = cstyle,
-				firstword = self.sentences[wn]
+				firstword = self.sentences[wn],
+				paragraphfirstword = (wn == 1)
 			}
 			FireEvent(Event.DrawWord, payload)
 
@@ -737,4 +739,3 @@ function CreateDocument()
 	d:appendParagraph(p)
 	return d
 end
-

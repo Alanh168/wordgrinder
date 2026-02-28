@@ -545,6 +545,7 @@ emit("build ", OBJDIR.."/luascripts.c: luascripts ", table.concat({
     "src/lua/addons/smartquotes.lua",
     "src/lua/addons/undo.lua",
     "src/lua/addons/spillchocker.lua",
+    "src/lua/addons/comments.lua",
     "src/lua/addons/templates.lua",
     "src/lua/addons/directories.lua",
     "src/lua/addons/recents.lua",

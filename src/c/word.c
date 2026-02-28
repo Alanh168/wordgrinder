@@ -501,4 +501,7 @@ void word_init(void)
 
 	lua_pushnumber(L, DPY_DIM);
 	lua_setfield(L, -2, "DIM");
+
+	lua_pushnumber(L, DPY_COLOR_RED);
+	lua_setfield(L, -2, "RED");
 }
