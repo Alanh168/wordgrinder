@@ -78,6 +78,12 @@ static int setitalic_cb(lua_State* L)
 	return 0;
 }
 
+static int setred_cb(lua_State* L)
+{
+	dpy_setattr(-1, DPY_COLOR_RED);
+	return 0;
+}
+
 static int setnormal_cb(lua_State* L)
 {
 	dpy_setattr(0, 0);
@@ -248,6 +254,7 @@ void screen_init(const char* argv[])
 		{ "setbright",                 setbright_cb },
 		{ "setdim",                    setdim_cb },
 		{ "setitalic",                 setitalic_cb },
+		{ "setred",                    setred_cb },
 		{ "setnormal",                 setnormal_cb },
 		{ "write",                     write_cb },
 		{ "cleararea",                 cleararea_cb },

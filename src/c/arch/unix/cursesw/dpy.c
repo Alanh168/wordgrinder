@@ -41,6 +41,13 @@ void dpy_start(void)
 	#if defined A_ITALIC
 		has_italics = !!tigetstr("sitm");
 	#endif
+
+	if (has_colors())
+	{
+		start_color();
+		use_default_colors();
+		init_pair(1, COLOR_RED, -1);
+	}
 }
 
 void dpy_shutdown(void)
@@ -94,6 +101,8 @@ void dpy_setattr(int andmask, int ormask)
 		cattr |= A_UNDERLINE;
 	if (attr & DPY_REVERSE)
 		cattr |= A_REVERSE;
+	if (attr & DPY_COLOR_RED)
+		cattr |= COLOR_PAIR(1);
 
 	attrset(cattr);
 }

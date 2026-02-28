@@ -116,6 +116,7 @@ enum
 	/* These cannot appear in text. */
 	DPY_BRIGHT = (1<<4),
 	DPY_DIM = (1<<5),
+	DPY_COLOR_RED = (1<<6),
 };
 
 extern void dpy_init(const char* argv[]);

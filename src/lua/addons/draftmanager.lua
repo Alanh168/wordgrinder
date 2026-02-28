@@ -9,6 +9,8 @@ local Write = wg.write
 local GetChar = wg.getchar
 local SetNormal = wg.setnormal
 local SetBright = wg.setbright
+local SetReverse = wg.setreverse
+local SetRed = wg.setred
 local GetBoundedString = wg.getboundedstring
 local GetStringWidth = wg.getstringwidth
 local GetWordText = wg.getwordtext
@@ -490,11 +492,12 @@ local function drawValueBar(x, y, w, title, value)
 end
 
 local function buildPreview(doc, width)
-	local preview = { lines = {} }
+	local preview = { lines = {}, words = {} }
 	if not doc then
 		return preview
 	end
 
+	local globalWord = 0
 	width = max(1, width)
 
 	local function pushLine(items)
@@ -508,6 +511,8 @@ local function buildPreview(doc, width)
 
 		for _, w in ipairs(paragraph) do
 			local text = GetWordText(w) or w
+			globalWord = globalWord + 1
+			preview.words[globalWord] = text
 
 			local ww = GetStringWidth(text)
 			local needSpace = (#lineItems > 0) and 1 or 0
@@ -518,7 +523,7 @@ local function buildPreview(doc, width)
 				needSpace = 0
 			end
 
-			lineItems[#lineItems + 1] = { text = text }
+			lineItems[#lineItems + 1] = { text = text, idx = globalWord }
 			if #lineItems == 1 then
 				lineWidth = ww
 			else
@@ -542,7 +547,131 @@ local function buildPreview(doc, width)
 	return preview
 end
 
-local function drawPreviewLine(x, y, w, line)
+-- Split a UTF-8 string into a table of individual codepoint strings.
+local function utf8chars(s)
+	local chars = {}
+	local i = 1
+	local len = #s
+	while i <= len do
+		local b = s:byte(i)
+		local clen
+		if b < 0x80 then clen = 1
+		elseif b < 0xE0 then clen = 2
+		elseif b < 0xF0 then clen = 3
+		else clen = 4 end
+		if i + clen - 1 > len then clen = len - i + 1 end
+		chars[#chars + 1] = s:sub(i, i + clen - 1)
+		i = i + clen
+	end
+	return chars
+end
+
+-- Build a flat table of UTF-8 codepoints from word list, with spaces between words.
+-- Returns: chars (table of codepoint strings), wordRanges[wi] = {start, finish}
+local function buildCharSequence(words)
+	local chars = {}
+	local ranges = {}
+	for wi = 1, #words do
+		if wi > 1 then
+			chars[#chars + 1] = " "
+		end
+		local startIdx = #chars + 1
+		local wchars = utf8chars(words[wi])
+		for _, c in ipairs(wchars) do
+			chars[#chars + 1] = c
+		end
+		ranges[wi] = { start = startIdx, finish = #chars }
+	end
+	return chars, ranges
+end
+
+-- Character-level LCS producing per-character keep masks for both sides.
+-- Works with UTF-8 codepoints (not raw bytes).
+-- Returns leftCharKept[charIdx]=true, rightCharKept[charIdx]=true,
+--         plus the wordRanges for mapping back.
+local function lcsCharMasks(leftWords, rightWords)
+	local leftChars, leftRanges = buildCharSequence(leftWords)
+	local rightChars, rightRanges = buildCharSequence(rightWords)
+
+	local ln = #leftChars
+	local rn = #rightChars
+
+	local leftCharKept = {}
+	local rightCharKept = {}
+
+	-- For very long texts, fall back to word-level LCS
+	if ln * rn > 2000000 then
+		local wln = #leftWords
+		local wrn = #rightWords
+		local dp = {}
+		for i = 0, wln + 1 do dp[i] = {} end
+		for i = wln, 1, -1 do
+			for j = wrn, 1, -1 do
+				if leftWords[i] == rightWords[j] then
+					dp[i][j] = (dp[i + 1][j + 1] or 0) + 1
+				else
+					local d = dp[i + 1][j] or 0
+					local r = dp[i][j + 1] or 0
+					dp[i][j] = (d > r) and d or r
+				end
+			end
+		end
+		local i, j = 1, 1
+		while (i <= wln) and (j <= wrn) do
+			if leftWords[i] == rightWords[j] then
+				local lr = leftRanges[i]
+				for c = lr.start, lr.finish do leftCharKept[c] = true end
+				local rr = rightRanges[j]
+				for c = rr.start, rr.finish do rightCharKept[c] = true end
+				i = i + 1; j = j + 1
+			else
+				local d = dp[i + 1][j] or 0
+				local r = dp[i][j + 1] or 0
+				if d >= r then i = i + 1 else j = j + 1 end
+			end
+		end
+		return leftCharKept, rightCharKept, leftRanges, rightRanges
+	end
+
+	-- Character-level LCS using full DP table (comparing UTF-8 codepoints)
+	local dp = {}
+	for i = 0, ln do
+		dp[i] = {}
+		for j = 0, rn do
+			dp[i][j] = 0
+		end
+	end
+	for i = 1, ln do
+		for j = 1, rn do
+			if leftChars[i] == rightChars[j] then
+				dp[i][j] = dp[i-1][j-1] + 1
+			else
+				local u = dp[i-1][j]
+				local l = dp[i][j-1]
+				dp[i][j] = (u > l) and u or l
+			end
+		end
+	end
+
+	-- Trace back
+	local i, j = ln, rn
+	while i > 0 and j > 0 do
+		if leftChars[i] == rightChars[j] then
+			leftCharKept[i] = true
+			rightCharKept[j] = true
+			i = i - 1
+			j = j - 1
+		elseif dp[i-1][j] >= dp[i][j-1] then
+			i = i - 1
+		else
+			j = j - 1
+		end
+	end
+
+	return leftCharKept, rightCharKept, leftRanges, rightRanges
+end
+
+local function drawPreviewLine(x, y, w, line, charKept, wordRanges, mode)
 	SetNormal()
 	Write(x, y, string.rep(" ", w))
 
@@ -553,6 +682,7 @@ local function drawPreviewLine(x, y, w, line)
 	local cx = x
 	for i, item in ipairs(line.items) do
 		if i > 1 then
+			SetNormal()
 			if (cx - x) < w then
 				Write(cx, y, " ")
 				cx = cx + 1
@@ -562,12 +692,45 @@ local function drawPreviewLine(x, y, w, line)
 			break
 		end
 
-		local segment = GetBoundedString(item.text, w - (cx - x))
-		if #segment > 0 then
-			Write(cx, y, segment)
-			cx = cx + GetStringWidth(segment)
+		local text = item.text
+		local wordIdx = item.idx
+		local range = wordRanges and wordRanges[wordIdx]
+
+		if not charKept or not range then
+			-- No diff data; render plain
+			SetNormal()
+			local segment = GetBoundedString(text, w - (cx - x))
+			if #segment > 0 then
+				Write(cx, y, segment)
+				cx = cx + GetStringWidth(segment)
+			end
+		else
+			-- Render character by character with diff styling (UTF-8 aware)
+			local uchars = utf8chars(text)
+			for ci = 1, #uchars do
+				if (cx - x) >= w then break end
+				local ch = uchars[ci]
+				local charIdx = range.start + ci - 1
+				local kept = charKept[charIdx]
+
+				if kept then
+					SetNormal()
+				else
+					if mode == "current" then
+						SetBright()
+						SetReverse()
+					else
+						SetRed()
+					end
+				end
+
+				Write(cx, y, ch)
+				cx = cx + GetStringWidth(ch)
+			end
 		end
 	end
+
+	SetNormal()
 end
 
 function Cmd.ManageDraftComparisonUI()
@@ -586,6 +749,10 @@ function Cmd.ManageDraftComparisonUI()
 	local commonNames = {}
 	local leftPreview = { lines = {}, words = {} }
 	local rightPreview = { lines = {}, words = {} }
+	local leftCharKept = {}
+	local rightCharKept = {}
+	local leftWordRanges = {}
+	local rightWordRanges = {}
 	local loadError = nil
 
 	local function clampState(previewHeight)
@@ -619,6 +786,10 @@ function Cmd.ManageDraftComparisonUI()
 		local function rebuildRows(previewWidth)
 			leftPreview = { lines = {}, words = {} }
 			rightPreview = { lines = {}, words = {} }
+			leftCharKept = {}
+			rightCharKept = {}
+			leftWordRanges = {}
+			rightWordRanges = {}
 
 			if (not selectedDraftSet) or (#commonNames == 0) then
 				return
@@ -633,6 +804,7 @@ function Cmd.ManageDraftComparisonUI()
 
 			leftPreview = buildPreview(leftDoc, previewWidth)
 			rightPreview = buildPreview(rightDoc, previewWidth)
+			leftCharKept, rightCharKept, leftWordRanges, rightWordRanges = lcsCharMasks(leftPreview.words, rightPreview.words)
 		end
 
 	local function loadSelectedDraft(previewWidth)
@@ -642,6 +814,10 @@ function Cmd.ManageDraftComparisonUI()
 			commonNames = {}
 			leftPreview = { lines = {}, words = {} }
 			rightPreview = { lines = {}, words = {} }
+			leftCharKept = {}
+			rightCharKept = {}
+			leftWordRanges = {}
+			rightWordRanges = {}
 
 		local draft = drafts[draftCursor]
 		if not draft then
@@ -692,8 +868,25 @@ function Cmd.ManageDraftComparisonUI()
 		if textW < 1 then textW = 1 end
 
 		drawValueBar(innerX, innerY, innerW, "Draft", selectedDraftName or "(none)")
+		-- Draw left/right arrows for Draft bar
+		SetNormal()
+		if draftCursor > 1 then
+			Write(innerX + innerW - 4, innerY + 1, "<")
+		end
+		if draftCursor < #drafts then
+			Write(innerX + innerW - 2, innerY + 1, ">")
+		end
+
 		local docName = commonNames[docCursor] or "(no shared documents)"
 		drawValueBar(innerX, innerY + 3, innerW, "Document", docName)
+		-- Draw up/down arrows for Document bar
+		SetNormal()
+		if docCursor > 1 then
+			Write(innerX + innerW - 4, innerY + 4, "^")
+		end
+		if docCursor < #commonNames then
+			Write(innerX + innerW - 2, innerY + 4, "v")
+		end
 
 		SetBright()
 		DrawTitledBox(leftX, previewTop, previewW, previewH, "Current")
@@ -716,8 +909,8 @@ function Cmd.ManageDraftComparisonUI()
 					local idx = scrollOffset + row
 					local leftLine = leftPreview.lines[idx]
 					local rightLine = rightPreview.lines[idx]
-					drawPreviewLine(leftX + 1, previewInnerY + row - 1, textW, leftLine)
-					drawPreviewLine(rightX + 1, previewInnerY + row - 1, textW, rightLine)
+					drawPreviewLine(leftX + 1, previewInnerY + row - 1, textW, leftLine, leftCharKept, leftWordRanges, "current")
+					drawPreviewLine(rightX + 1, previewInnerY + row - 1, textW, rightLine, rightCharKept, rightWordRanges, "draft")
 				end
 			end
 
