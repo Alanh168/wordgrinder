@@ -18,6 +18,7 @@ local GetWordText = wg.getwordtext
 
 -- Tracks which draft was last loaded this session (for status bar display).
 LastLoadedDraftName = nil
+local persistDrafts
 
 -- Hex encoding so that draft snapshot strings (which are full .wg files) are
 -- safe to embed as property values in the outer .wg file's text format.
@@ -78,6 +79,45 @@ local function captureDocumentSetData()
 	return hexencode(data)
 end
 
+local function captureSpecificDocumentSetData(ds)
+	local savedDrafts = ds.addons.drafts
+	ds.addons.drafts = nil
+
+	local tmpPath = os.tmpname()
+	local ok = SaveToStream(tmpPath, ds)
+
+	ds.addons.drafts = savedDrafts
+
+	if not ok then return nil end
+
+	local f = io.open(tmpPath, "rb")
+	if not f then os.remove(tmpPath); return nil end
+	local data = f:read("*all")
+	f:close()
+	os.remove(tmpPath)
+	return hexencode(data)
+end
+
+local function loadDocumentSetData(data)
+	local tmpPath = os.tmpname()
+	local f = io.open(tmpPath, "wb")
+	if not f then
+		return nil, "Failed to create temporary file."
+	end
+
+	f:write(decodeData(data))
+	f:close()
+
+	local ds, e = LoadFromStream(tmpPath)
+	os.remove(tmpPath)
+
+	if not ds then
+		return nil, e or "Failed to load draft data."
+	end
+
+	return ds
+end
+
 -- Loads a draft by writing its data to a temp file, then loading normally.
 -- Preserves DocumentSet.name and DocumentSet.addons.drafts so the rest of the
 -- session is unaffected.
@@ -115,6 +155,91 @@ local function loadDraftData(draft)
 	return ok
 end
 
+local function nextRevisionDraftName()
+	local drafts = DocumentSet.addons.drafts or {}
+	local used = {}
+	for _, draft in ipairs(drafts) do
+		used[draft.name or ""] = true
+	end
+
+	if not used["Revision"] then
+		return "Revision"
+	end
+
+	local n = 2
+	while used["Revision " .. n] do
+		n = n + 1
+	end
+	return "Revision " .. n
+end
+
+function Cmd.ImportRevisionFromMarkdown(filename)
+	if not DocumentSet.name then
+		ModalMessage("Cannot import revision", "Please save your project first before creating a revision draft.")
+		return false
+	end
+
+	if not filename then
+		filename = FileBrowser("Import Revision from Markdown", "Import from:", false)
+		if not filename then
+			return false
+		end
+	end
+
+	local fp = io.open(filename)
+	if not fp then
+		ModalMessage("Cannot import revision", "The markdown file could not be opened.")
+		return false
+	end
+
+	ImmediateMessage("Importing revision...")
+	local importedDocument = Cmd.ImportMarkdownFileFromStream(fp)
+	fp:close()
+
+	if not importedDocument then
+		ModalMessage("Cannot import revision", "The markdown file could not be imported.")
+		return false
+	end
+
+	local currentData = captureDocumentSetData()
+	if not currentData then
+		ModalMessage("Cannot import revision", "Failed to capture the current project state.")
+		return false
+	end
+
+	local revisionSet, e = loadDocumentSetData(currentData)
+	if not revisionSet then
+		ModalMessage("Cannot import revision", e or "Failed to clone the current project state.")
+		return false
+	end
+
+	local currentName = Document.name
+	local currentIndex = revisionSet:_findDocument(currentName)
+	if not currentIndex then
+		ModalMessage("Cannot import revision", "Could not locate the current document in the project clone.")
+		return false
+	end
+
+	importedDocument.name = currentName
+	revisionSet.documents[currentIndex] = importedDocument
+	revisionSet.documents[currentName] = importedDocument
+	revisionSet.current = importedDocument
+
+	local revisionData = captureSpecificDocumentSetData(revisionSet)
+	if not revisionData then
+		ModalMessage("Cannot import revision", "Failed to save the imported revision as a draft.")
+		return false
+	end
+
+	DocumentSet.addons.drafts = DocumentSet.addons.drafts or {}
+	local draftName = nextRevisionDraftName()
+	table.insert(DocumentSet.addons.drafts, { name = draftName, data = revisionData })
+	persistDrafts()
+	RebuildDocumentSetsMenu()
+	NonmodalMessage("Imported revision as '" .. draftName .. "'.")
+	return true
+end
+
 -- Globally accessible so menu.lua's RebuildDocumentSetsMenu can call it.
 function LoadDraft(draft)
 	return loadDraftData(draft)
@@ -122,7 +247,7 @@ end
 
 -- Saves the project file with the current drafts list embedded.
 -- Only writes if the project already has a file path.
-local function persistDrafts()
+persistDrafts = function()
 	if DocumentSet.name then
 		Cmd.SaveCurrentDocument()
 	end
@@ -463,23 +588,7 @@ end
 -- Draft Comparison Viewer (Manage drafts...)
 
 local function loadDraftDocumentSet(draft)
-	local tmpPath = os.tmpname()
-	local f = io.open(tmpPath, "wb")
-	if not f then
-		return nil, "Failed to create temporary file."
-	end
-
-	f:write(decodeData(draft.data))
-	f:close()
-
-	local ds, e = LoadFromStream(tmpPath)
-	os.remove(tmpPath)
-
-	if not ds then
-		return nil, e or "Failed to load draft data."
-	end
-
-	return ds
+	return loadDocumentSetData(draft.data)
 end
 
 local function drawValueBar(x, y, w, title, value)
@@ -767,6 +876,8 @@ function Cmd.ManageDraftComparisonUI()
 	local leftWordMasks = {}
 	local rightWordMasks = {}
 	local loadError = nil
+	local refreshForDraftSelection
+	local refreshForDocumentSelection
 
 	local function getPreviewTextWidth(screenWidth)
 		local innerW = screenWidth - 4
@@ -854,8 +965,38 @@ function Cmd.ManageDraftComparisonUI()
 		end
 		if docCursor < 1 then
 			docCursor = 1
+			end
+			rebuildRows(previewWidth)
+	end
+
+	local function deleteSelectedDraft()
+		local draft = drafts[draftCursor]
+		if not draft then
+			return false
 		end
-		rebuildRows(previewWidth)
+
+		if not PromptForYesNo("Delete draft?",
+			"Remove '" .. (draft.name or "") .. "' from the draft list?") then
+			return false
+		end
+
+		table.remove(DocumentSet.addons.drafts, draftCursor)
+		persistDrafts()
+		RebuildDocumentSetsMenu()
+
+		if #drafts == 0 then
+			return true
+		end
+
+		if draftCursor > #drafts then
+			draftCursor = #drafts
+		end
+		if draftCursor < 1 then
+			draftCursor = 1
+		end
+
+		refreshForDraftSelection()
+		return false
 	end
 
 	local function drawScreen()
@@ -869,7 +1010,7 @@ function Cmd.ManageDraftComparisonUI()
 		local innerX = 2
 		local innerY = 2
 		local innerW = sw - 4
-		local helpRows = 2
+		local helpRows = 3
 		local topBarsH = 6
 		local gap = 3
 		local previewTop = innerY + topBarsH
@@ -929,20 +1070,21 @@ function Cmd.ManageDraftComparisonUI()
 				end
 			end
 
-		CentreInField(innerX, sh - 4, innerW,
+		CentreInField(innerX, sh - 5, innerW,
 			"LEFT/RIGHT: Draft    UP/DOWN: Document    SHIFT+UP/DOWN: Scroll")
+		CentreInField(innerX, sh - 4, innerW, "D: Delete selected draft")
 		CentreInField(innerX, sh - 3, innerW, "RETURN or ^C: Close")
 		wg.hidecursor()
 		wg.sync()
 	end
 
-	local function refreshForDraftSelection()
+	refreshForDraftSelection = function()
 		local previewWidth = getPreviewTextWidth(ScreenWidth)
 		loadSelectedDraft(previewWidth)
 		scrollOffset = 0
 	end
 
-	local function refreshForDocumentSelection()
+	refreshForDocumentSelection = function()
 		local previewWidth = getPreviewTextWidth(ScreenWidth)
 		rebuildRows(previewWidth)
 		scrollOffset = 0
@@ -982,12 +1124,16 @@ function Cmd.ManageDraftComparisonUI()
 			scrollOffset = max(0, scrollOffset - 1)
 		elseif key == "KEY_SDOWN" then
 			scrollOffset = scrollOffset + 1
-		elseif key == "KEY_PGUP" then
-			scrollOffset = max(0, scrollOffset - int((ScreenHeight - 12) / 2))
-		elseif key == "KEY_PGDN" then
-			scrollOffset = scrollOffset + int((ScreenHeight - 12) / 2)
+			elseif key == "KEY_PGUP" then
+				scrollOffset = max(0, scrollOffset - int((ScreenHeight - 12) / 2))
+			elseif key == "KEY_PGDN" then
+				scrollOffset = scrollOffset + int((ScreenHeight - 12) / 2)
+			elseif (key == "d") or (key == "D") then
+				if deleteSelectedDraft() then
+					break
+				end
+			end
 		end
-	end
 
 	QueueRedraw()
 	return true

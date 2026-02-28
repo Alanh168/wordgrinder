@@ -23,6 +23,7 @@ local table_insert = table.insert
 function Cmd.ImportMarkdownFileFromStream(fp)
 	local document = CreateDocument()
 	local importer = CreateImporter(document)
+	importer:reset()
 
 	-- The Lunamark parser model expects to produce a string, but what we want
 	-- is a parse tree.  This means there's some degree of semantic mismatch.
@@ -272,7 +273,6 @@ function Cmd.ImportMarkdownFileFromStream(fp)
 
     -- Now we have a parse tree, execute all the actions to generate the document.
 
-    importer:reset()
     for _, v in ipairs(FlattenArray(parsetree)) do
         local t = type(v)
         if (t == "string") and (v ~= "") then
@@ -291,4 +291,3 @@ function Cmd.ImportMarkdownFile(filename)
 end
 
 -- vim: sw=4 ts=4 et
-
