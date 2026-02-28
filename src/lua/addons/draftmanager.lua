@@ -764,6 +764,12 @@ function Cmd.ManageDraftComparisonUI()
 	local rightWordMasks = {}
 	local loadError = nil
 
+	local function getPreviewTextWidth(screenWidth)
+		local innerW = screenWidth - 4
+		local previewW = int((innerW - 4) / 2)
+		return max(1, previewW - 2)
+	end
+
 	local function clampState(previewHeight)
 		if docCursor < 1 then docCursor = 1 end
 		if docCursor > #commonNames then docCursor = #commonNames end
@@ -861,12 +867,12 @@ function Cmd.ManageDraftComparisonUI()
 		local innerW = sw - 4
 		local helpRows = 2
 		local topBarsH = 6
-		local gap = 2
+		local gap = 3
 		local previewTop = innerY + topBarsH
 		local previewH = (sh - 6) - topBarsH - helpRows
 		if previewH < 4 then previewH = 4 end
 
-		local previewW = int((innerW - gap) / 2)
+		local previewW = int((innerW - 4) / 2)
 		local leftX = innerX
 		local rightX = innerX + previewW + gap
 		local textW = previewW - 2
@@ -927,13 +933,13 @@ function Cmd.ManageDraftComparisonUI()
 	end
 
 	local function refreshForDraftSelection()
-		local previewWidth = max(1, int((ScreenWidth - 4 - 2) / 2) - 2)
+		local previewWidth = getPreviewTextWidth(ScreenWidth)
 		loadSelectedDraft(previewWidth)
 		scrollOffset = 0
 	end
 
 	local function refreshForDocumentSelection()
-		local previewWidth = max(1, int((ScreenWidth - 4 - 2) / 2) - 2)
+		local previewWidth = getPreviewTextWidth(ScreenWidth)
 		rebuildRows(previewWidth)
 		scrollOffset = 0
 	end
