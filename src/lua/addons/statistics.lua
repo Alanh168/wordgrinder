@@ -60,6 +60,161 @@ local function formatNumber(n)
 end
 
 -----------------------------------------------------------------------------
+-- Big number rendering for Statistics UI
+
+local BIG_DIGIT_HEIGHT = 7
+
+local bigDigits = {
+	["0"] = {
+		" ██████ ",
+		"██    ██",
+		"██    ██",
+		"██    ██",
+		"██    ██",
+		"██    ██",
+		" ██████ ",
+	},
+	["1"] = {
+		"   ██   ",
+		"  ███   ",
+		"   ██   ",
+		"   ██   ",
+		"   ██   ",
+		"   ██   ",
+		" ██████ ",
+	},
+	["2"] = {
+		" ██████ ",
+		"██    ██",
+		"      ██",
+		" ██████ ",
+		"██      ",
+		"██      ",
+		"████████",
+	},
+	["3"] = {
+		" ██████ ",
+		"██    ██",
+		"      ██",
+		"  █████ ",
+		"      ██",
+		"██    ██",
+		" ██████ ",
+	},
+	["4"] = {
+		"██    ██",
+		"██    ██",
+		"██    ██",
+		"████████",
+		"      ██",
+		"      ██",
+		"      ██",
+	},
+	["5"] = {
+		"████████",
+		"██      ",
+		"██      ",
+		"███████ ",
+		"      ██",
+		"██    ██",
+		" ██████ ",
+	},
+	["6"] = {
+		" ██████ ",
+		"██      ",
+		"██      ",
+		"███████ ",
+		"██    ██",
+		"██    ██",
+		" ██████ ",
+	},
+	["7"] = {
+		"████████",
+		"      ██",
+		"     ██ ",
+		"    ██  ",
+		"   ██   ",
+		"  ██    ",
+		"  ██    ",
+	},
+	["8"] = {
+		" ██████ ",
+		"██    ██",
+		"██    ██",
+		" ██████ ",
+		"██    ██",
+		"██    ██",
+		" ██████ ",
+	},
+	["9"] = {
+		" ██████ ",
+		"██    ██",
+		"██    ██",
+		" ███████",
+		"      ██",
+		"      ██",
+		" ██████ ",
+	},
+	[","] = {
+		"    ",
+		"    ",
+		"    ",
+		"    ",
+		"    ",
+		" ██ ",
+		"██  ",
+	},
+	["-"] = {
+		"        ",
+		"        ",
+		"        ",
+		" ██████ ",
+		"        ",
+		"        ",
+		"        ",
+	},
+}
+
+local function utf8len(s)
+	local len = 0
+	local i = 1
+	while i <= #s do
+		local b = s:byte(i)
+		if b < 128 then
+			i = i + 1
+		elseif b < 224 then
+			i = i + 2
+		elseif b < 240 then
+			i = i + 3
+		else
+			i = i + 4
+		end
+		len = len + 1
+	end
+	return len
+end
+
+local function renderBigNumber(numStr)
+	local lines = {}
+	for row = 1, BIG_DIGIT_HEIGHT do
+		lines[row] = ""
+	end
+	for i = 1, #numStr do
+		local ch = numStr:sub(i, i)
+		local glyph = bigDigits[ch]
+		if glyph then
+			for row = 1, BIG_DIGIT_HEIGHT do
+				if lines[row] ~= "" then
+					lines[row] = lines[row] .. " "
+				end
+				lines[row] = lines[row] .. glyph[row]
+			end
+		end
+	end
+	return lines
+end
+
+-----------------------------------------------------------------------------
 -- Log file I/O
 
 local function loadWordCountLog()
@@ -171,23 +326,37 @@ function Cmd.StatisticsUI()
 		local today = getToday()
 		local todayCount = dailyLog[today] or 0
 
+		-- Recent history starts at 80% of screen height
+		local historyHeaderY = int(sh * 0.8)
+		if historyHeaderY > sh - 7 then
+			historyHeaderY = sh - 7
+		end
+
 		local headerY = 3
 		SetBright()
 		CentreInField(innerX, headerY, innerW, "Today's Word Count")
 		SetNormal()
 
-		local countY = headerY + 2
+		-- Render big number centered between header and history
+		local bigLines = renderBigNumber(formatNumber(todayCount))
+		local topBound = headerY + 2
+		local bottomBound = historyHeaderY - 1
+		local countY = topBound + int((bottomBound - topBound - BIG_DIGIT_HEIGHT) / 2)
+		if countY < topBound then countY = topBound end
 		SetBright()
-		CentreInField(innerX, countY, innerW, formatNumber(todayCount))
-		SetNormal()
-
-		local dateY = countY + 1
-		SetDim()
-		CentreInField(innerX, dateY, innerW, today)
+		local visualWidth = utf8len(bigLines[1] or "")
+		if visualWidth > innerW then
+			-- Fallback to single-line if terminal too narrow
+			CentreInField(innerX, topBound + int((bottomBound - topBound) / 2), innerW, formatNumber(todayCount))
+		else
+			local bigX = innerX + int((innerW - visualWidth) / 2)
+			for i, line in ipairs(bigLines) do
+				Write(bigX, countY + i - 1, line)
+			end
+		end
 		SetNormal()
 
 		-- Recent history section
-		local historyHeaderY = dateY + 2
 		SetBright()
 		CentreInField(innerX, historyHeaderY, innerW, "Recent History")
 		SetNormal()

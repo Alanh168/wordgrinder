@@ -43,6 +43,7 @@ if DEBUG then
 		X11_FONT = true,
 		X11_ITALIC_MODIFIER = true,
 		X11_NORMAL_COLOUR = true,
+		LastLoadedDraftName = true,
 	}
 
 	setmetatable(_G,
