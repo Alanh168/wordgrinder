@@ -97,6 +97,7 @@ local ImportMenu = CreateMenu("Import new document",
 	{"FIodt",  "O", "Import ODT file...",        nil,         Cmd.ImportODTFile},
 	{"FIhtml", "H", "Import HTML file...",       nil,         Cmd.ImportHTMLFile},
 	{"FImd",   "M", "Import Markdown file...",   nil,         Cmd.ImportMarkdownFile},
+	{"FIrtf",  "R", "Import Rich Text File...",  nil,         Cmd.ImportRichTextFile},
 	{"FItxt",  "T", "Import text file...",       nil,         Cmd.ImportTextFile},
 })
 
@@ -265,7 +266,8 @@ local MainMenu = CreateMenu("Main Menu",
 	{"S",  "S", "Style ▷",          nil,  StyleMenu},
 	{"D",  "D", "Document ▷",       nil,  DocumentMenu},
 	{"A",  "A", "Drafts ▷",         nil,  DraftsMenu},
-	{"Z",  "Z", "Navigation ▷",     nil,  NavigationMenu}
+	{"Z",  "Z", "Navigation ▷",     nil,  NavigationMenu},
+	{"T",  "T", "Statistics",       nil,  Cmd.StatisticsUI}
 })
 
 function IsMenu(m)
