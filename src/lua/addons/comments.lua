@@ -34,7 +34,7 @@ do
 
 		local highlight = in_comment or (markers > 0)
 		if highlight then
-			payload.cstyle = bor(payload.cstyle, wg.BRIGHT, wg.REVERSE, wg.RED)
+			payload.cstyle = bor(payload.cstyle, wg.DIM, wg.RED)
 		end
 
 		if (markers % 2) == 1 then
