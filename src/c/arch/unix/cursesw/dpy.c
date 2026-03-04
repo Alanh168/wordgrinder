@@ -47,6 +47,23 @@ void dpy_start(void)
 		start_color();
 		use_default_colors();
 		init_pair(1, COLOR_RED, -1);
+		init_pair(2, COLOR_YELLOW, -1);
+		init_pair(3, COLOR_CYAN, -1);
+		init_pair(4, COLOR_BLUE, -1);
+		init_pair(5, COLOR_MAGENTA, -1);
+		init_pair(6, COLOR_WHITE, -1);
+		if (COLORS >= 256)
+		{
+			init_pair(7, 208, -1);   /* orange (255,135,0) */
+			init_pair(8, 130, -1);   /* dark orange (175,95,0) */
+			init_pair(9, 223, -1);   /* beige (255,215,175) */
+		}
+		else
+		{
+			init_pair(7, COLOR_YELLOW, -1);  /* orange fallback */
+			init_pair(8, COLOR_RED, -1);     /* dark orange fallback */
+			init_pair(9, COLOR_WHITE, -1);   /* beige fallback */
+		}
 	}
 }
 
@@ -103,6 +120,22 @@ void dpy_setattr(int andmask, int ormask)
 		cattr |= A_REVERSE;
 	if (attr & DPY_COLOR_RED)
 		cattr |= COLOR_PAIR(1);
+	else if (attr & DPY_COLOR_YELLOW)
+		cattr |= COLOR_PAIR(2);
+	else if (attr & DPY_COLOR_CYAN)
+		cattr |= COLOR_PAIR(3);
+	else if (attr & DPY_COLOR_BLUE)
+		cattr |= COLOR_PAIR(4);
+	else if (attr & DPY_COLOR_MAGENTA)
+		cattr |= COLOR_PAIR(5);
+	else if (attr & DPY_COLOR_WHITE)
+		cattr |= COLOR_PAIR(6);
+	else if (attr & DPY_COLOR_ORANGE)
+		cattr |= COLOR_PAIR(7);
+	else if (attr & DPY_COLOR_DARKORANGE)
+		cattr |= COLOR_PAIR(8);
+	else if (attr & DPY_COLOR_BEIGE)
+		cattr |= COLOR_PAIR(9);
 
 	attrset(cattr);
 }

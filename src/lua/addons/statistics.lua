@@ -10,6 +10,16 @@ local GetChar = wg.getchar
 local SetNormal = wg.setnormal
 local SetBright = wg.setbright
 local SetDim = wg.setdim
+local SetRed = wg.setred
+local SetYellow = wg.setyellow
+local SetCyan = wg.setcyan
+local SetBlue = wg.setblue
+local SetMagenta = wg.setmagenta
+local SetWhite = wg.setwhite
+local SetOrange = wg.setorange
+local SetDarkOrange = wg.setdarkorange
+local SetBeige = wg.setbeige
+local GetWordText = wg.getwordtext
 
 -----------------------------------------------------------------------------
 -- State
@@ -26,6 +36,36 @@ local function getToday()
 	return os.date("%Y-%m-%d")
 end
 
+local function countCommentMarkers(text)
+	local count = 0
+	local i = 1
+	while true do
+		i = text:find("%+%+", i)
+		if not i then
+			return count
+		end
+		count = count + 1
+		i = i + 2
+	end
+end
+
+local function countNonCommentWords(paragraph)
+	local count = 0
+	local in_comment = false
+	for _, word in ipairs(paragraph) do
+		local text = GetWordText(word)
+		local markers = countCommentMarkers(text)
+		local is_comment = in_comment or (markers > 0)
+		if not is_comment then
+			count = count + 1
+		end
+		if (markers % 2) == 1 then
+			in_comment = not in_comment
+		end
+	end
+	return count
+end
+
 local function computeTotalWordCount()
 	local total = 0
 	if not DocumentSet then
@@ -37,7 +77,7 @@ local function computeTotalWordCount()
 	end
 	for _, doc in ipairs(docs) do
 		for _, p in ipairs(doc) do
-			total = total + #p
+			total = total + countNonCommentWords(p)
 		end
 	end
 	return total
@@ -215,6 +255,217 @@ local function renderBigNumber(numStr)
 end
 
 -----------------------------------------------------------------------------
+-- Color-attribute sprite rendering
+--
+-- Every visible pixel is a full block (█) drawn with an actual terminal color.
+-- CRT's shader detects chromatic colors (saturation > 0.2) and passes them
+-- through as actual colors. Achromatic colors (white/grey) are converted to
+-- the terminal's green fontColor as usual.
+--
+-- 256-color palette (accurate sprite colors):
+--   O = Orange      (index 208, #ff8700) → main body
+--   D = Dark orange (index 130, #af5f00) → darker body areas
+--   B = Beige       (index 223, #ffd7af) → claws/skin
+--
+-- Standard colors (used in other sprites / UI):
+--   R = Red, Y = Yellow, C = Cyan, M = Magenta, U = blUe, W = White
+--
+--   . = empty   (transparent, draws nothing)
+
+local BLOCK = "█"
+
+local function setPixelAttr(ch)
+	-- Clear all attributes first (BRIGHT/DIM/BOLD from previous draws persist
+	-- via dpy_setattr's OR mask, turning every color into bold-yellow)
+	SetNormal()
+	if ch == "R" then
+		SetRed()
+	elseif ch == "Y" then
+		SetYellow()
+	elseif ch == "C" then
+		SetCyan()
+	elseif ch == "U" then
+		SetBlue()
+	elseif ch == "M" then
+		SetMagenta()
+	elseif ch == "W" then
+		SetWhite()
+	elseif ch == "O" then
+		SetOrange()
+	elseif ch == "D" then
+		SetDarkOrange()
+	elseif ch == "B" then
+		SetBeige()
+	end
+end
+
+local function renderSpriteRow(x, y, encoded)
+	local col = 0
+	for i = 1, #encoded do
+		local ch = encoded:sub(i, i)
+		if ch ~= "." then
+			setPixelAttr(ch)
+			Write(x + col, y, BLOCK)
+		end
+		col = col + 1
+	end
+end
+
+-----------------------------------------------------------------------------
+-- Character evolution sprites
+-- Each stage has:
+--   sprite       = full-size sprite (1 pixel = 1 char cell, color-encoded)
+--   sprite_small = compact version for tight screens
+--
+-- Color encoding:
+--   O = Orange (256-color 208) — main body
+--   D = Dark orange (256-color 130) — darker body, outline details
+--   B = Beige (256-color 223) — claws, teeth, skin
+--   R/Y/C = Red/Yellow/Cyan — used in evolution sprites
+--   . = empty (black outline / transparent — bg is already black)
+--
+-- Enable "Color Conversion" in CRT View menu to see actual colors.
+
+local evolutionStages = {
+	{
+		-- Agumon sprite (from orange pixel art reference)
+		-- Pixel-accurate mapping from 15×14 reference:
+		--   Black outline/eyes → . (empty, CRT bg is black)
+		--   Dark orange body   → D (256-color 130)
+		--   Orange body        → O (256-color 208)
+		--   Beige/skin claws   → B (256-color 223)
+		threshold = 0,
+		sprite = {
+			"..........DDOO.",
+			".....DDDDOOOO..",
+			"....DD.DDOOO...",
+			"..BBBB..DDO....",
+			".DBBBBB..DOOO..",
+			"....DOOOOOOOOOO",
+			"..OOOOOOOOOOOO.",
+			".....DDOOOOO...",
+			"....OOOOOOOOO..",
+			"...B.OOO.BOOO..",
+			"....DOOO..DO...",
+			".....OOOOO.....",
+			"...OO..........",
+			"..B.B..B.B.B...",
+		},
+		sprite_small = {
+			".....DDDDOOOO.",
+			"..BBBB.DDOOO..",
+			".DBBBBB..DOOO.",
+			"..OOOOOOOOOOOO.",
+			"...B.OOO.BOOO.",
+			".....OOOOO.....",
+			"..B.B..B.B.B...",
+		},
+	},
+	{
+		threshold = 500,
+		sprite = {
+			"..YYYYYYYY..",
+			".YRRCCCCRRRY.",
+			".YRR.YY.RRY.",
+			"..YRCCCCY...",
+			"Y.YRRRRRRRY.",
+			"YRYRRCCRRRY.Y",
+			".Y.RRRRRR.Y.",
+			"..YRRCCRRRY..",
+			"...YRRRRY...",
+			"...YRCCRY...",
+			"..YRC..CRY..",
+			"..YCR..RCY..",
+			"..YY....YY..",
+		},
+		sprite_small = {
+			"..YYYYYYYY..",
+			".YRR.YY.RRY.",
+			"Y.YRRRRRRY..",
+			".Y.RRRRRR.Y.",
+			"...YRRRRY...",
+			"..YRC..CRY..",
+			"..YY....YY..",
+		},
+	},
+	{
+		threshold = 1000,
+		sprite = {
+			"...YYYYYYYY...",
+			"..YCCRRRRCCCY..",
+			"..YCR.YY.RCY..",
+			"..YCRRCCRCCY..",
+			".YYRRRRRRRRYY.",
+			"Y.YRRRRRRRRY.Y",
+			"YRYRRRCCRRRYRRR",
+			".Y.RRRRRRRR.Y.",
+			"...YRRRRRRYR..",
+			"....YRRRRY....",
+			"...YRRCCRRRY...",
+			"...YRC..CRY...",
+			"..YYCR..RCYY..",
+			"..YY......YY..",
+		},
+		sprite_small = {
+			"..YYYYYYYYYY..",
+			"..YCR.YY.RCY..",
+			".YYRRRRRRRRYY.",
+			"YRYRRRCCRRRYRRR",
+			"...YRRRRRRYR..",
+			"...YRRCCRRRY...",
+			"..YYCR..RCYY..",
+			"..YY......YY..",
+		},
+	},
+	{
+		threshold = 2000,
+		sprite = {
+			"....YYYYYYYY....",
+			"...YRRCCCCRRRY...",
+			"...YRC.YY.CRY...",
+			"...YRRCCCCRRRY...",
+			"..YYRRRRRRRRYY..",
+			"Y..YRRRRRRRRY..Y",
+			"YR.YRRCCCCRRRY.RY",
+			".Y.YRRRRRRRR.Y.",
+			"...YRRRRRRRRY...",
+			"....YRRRRRRYR...",
+			"....YRRCCRRRY....",
+			"...YRC....CRY...",
+			"...YCR....RCY...",
+			"...YY......YY...",
+		},
+		sprite_small = {
+			"...YYYYYYYYYY...",
+			"...YRC.YY.CRY...",
+			"..YYRRRRRRRRYY..",
+			"YR.YRRCCCCRRRY.RY",
+			"...YRRRRRRRRY...",
+			"....YRRCCRRRY....",
+			"...YCR....RCY...",
+			"...YY......YY...",
+		},
+	},
+}
+
+local function getEvolutionSprite(wordCount, availableHeight)
+	local stage = evolutionStages[1]
+	for _, s in ipairs(evolutionStages) do
+		if wordCount >= s.threshold then
+			stage = s
+		end
+	end
+	-- Pick small sprite if not enough vertical space for the full one
+	if availableHeight and stage.sprite_small then
+		local fullHeight = #stage.sprite
+		if fullHeight > availableHeight and #stage.sprite_small <= availableHeight then
+			return stage.sprite_small
+		end
+	end
+	return stage.sprite
+end
+
+-----------------------------------------------------------------------------
 -- Log file I/O
 
 local function loadWordCountLog()
@@ -274,7 +525,7 @@ local function onChanged(event, token)
 	local delta = currentTotal - previousTotalWords
 	if delta ~= 0 then
 		local today = getToday()
-		dailyLog[today] = (dailyLog[today] or 0) + delta
+		dailyLog[today] = max(0, (dailyLog[today] or 0) + delta)
 		logDirty = true
 	end
 	previousTotalWords = currentTotal
@@ -316,11 +567,17 @@ function Cmd.StatisticsUI()
 		wg.clearscreen()
 
 		local sw, sh = ScreenWidth, ScreenHeight
-		local outerW, outerH = sw - 2, sh - 2
-		DrawTitledBox(0, 0, outerW, outerH, "Statistics")
 
-		local innerX = 2
-		local innerW = sw - 6
+		-- Draw top and bottom borders only (no side borders)
+		SetBright()
+		local hborder = string.rep("─", sw)
+		Write(0, 0, hborder)
+		CentreInField(0, 0, sw, " Statistics ")
+		Write(0, sh - 1, hborder)
+		SetNormal()
+
+		local innerX = 1
+		local innerW = sw - 2
 
 		-- Today's word count (prominent display)
 		local today = getToday()
@@ -332,26 +589,40 @@ function Cmd.StatisticsUI()
 			historyHeaderY = sh - 7
 		end
 
-		local headerY = 3
+		local headerY = 2
 		SetBright()
 		CentreInField(innerX, headerY, innerW, "Today's Word Count")
 		SetNormal()
 
-		-- Render big number centered between header and history
+		-- Render big number near the top
 		local bigLines = renderBigNumber(formatNumber(todayCount))
-		local topBound = headerY + 2
-		local bottomBound = historyHeaderY - 1
-		local countY = topBound + int((bottomBound - topBound - BIG_DIGIT_HEIGHT) / 2)
-		if countY < topBound then countY = topBound end
+		local countY = headerY + 2
 		SetBright()
 		local visualWidth = utf8len(bigLines[1] or "")
 		if visualWidth > innerW then
 			-- Fallback to single-line if terminal too narrow
-			CentreInField(innerX, topBound + int((bottomBound - topBound) / 2), innerW, formatNumber(todayCount))
+			CentreInField(innerX, countY + 3, innerW, formatNumber(todayCount))
 		else
 			local bigX = innerX + int((innerW - visualWidth) / 2)
 			for i, line in ipairs(bigLines) do
 				Write(bigX, countY + i - 1, line)
+			end
+		end
+		SetNormal()
+
+		-- Character evolution sprite
+		local spriteTop = countY + BIG_DIGIT_HEIGHT + 1
+		local spriteBottom = historyHeaderY - 1
+		local availableHeight = spriteBottom - spriteTop
+		local sprite = getEvolutionSprite(todayCount, availableHeight)
+		local spriteHeight = #sprite
+		local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight) / 2)
+		if spriteY < spriteTop then spriteY = spriteTop end
+		local spriteWidth = #(sprite[1] or "")
+		local spriteX = innerX + int((innerW - spriteWidth) / 2)
+		for i, line in ipairs(sprite) do
+			if spriteY + i - 1 < historyHeaderY then
+				renderSpriteRow(spriteX, spriteY + i - 1, line)
 			end
 		end
 		SetNormal()

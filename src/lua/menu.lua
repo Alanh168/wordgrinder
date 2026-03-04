@@ -265,8 +265,8 @@ local MainMenu = CreateMenu("Main Menu",
 	{"E",  "E", "Edit ▷",           nil,  EditMenu},
 	{"S",  "S", "Style ▷",          nil,  StyleMenu},
 	{"D",  "D", "Document ▷",       nil,  DocumentMenu},
-	{"A",  "A", "Drafts ▷",         nil,  DraftsMenu},
-	{"Z",  "Z", "Navigation ▷",     nil,  NavigationMenu},
+	{"Z",  "Z", "Drafts ▷",         nil,  DraftsMenu},
+	{"N",  "N", "Navigation ▷",     nil,  NavigationMenu},
 	{"T",  "T", "Statistics",       nil,  Cmd.StatisticsUI}
 })
 

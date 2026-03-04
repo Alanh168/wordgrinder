@@ -504,4 +504,28 @@ void word_init(void)
 
 	lua_pushnumber(L, DPY_COLOR_RED);
 	lua_setfield(L, -2, "RED");
+
+	lua_pushnumber(L, DPY_COLOR_YELLOW);
+	lua_setfield(L, -2, "YELLOW");
+
+	lua_pushnumber(L, DPY_COLOR_CYAN);
+	lua_setfield(L, -2, "CYAN");
+
+	lua_pushnumber(L, DPY_COLOR_BLUE);
+	lua_setfield(L, -2, "BLUE");
+
+	lua_pushnumber(L, DPY_COLOR_MAGENTA);
+	lua_setfield(L, -2, "MAGENTA");
+
+	lua_pushnumber(L, DPY_COLOR_WHITE);
+	lua_setfield(L, -2, "WHITE");
+
+	lua_pushnumber(L, DPY_COLOR_ORANGE);
+	lua_setfield(L, -2, "ORANGE");
+
+	lua_pushnumber(L, DPY_COLOR_DARKORANGE);
+	lua_setfield(L, -2, "DARKORANGE");
+
+	lua_pushnumber(L, DPY_COLOR_BEIGE);
+	lua_setfield(L, -2, "BEIGE");
 }
