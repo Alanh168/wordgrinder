@@ -10,6 +10,7 @@ local GetChar = wg.getchar
 local SetNormal = wg.setnormal
 local SetBright = wg.setbright
 local SetDim = wg.setdim
+local SetReverse = wg.setreverse
 local SetRed = wg.setred
 local SetYellow = wg.setyellow
 local SetCyan = wg.setcyan
@@ -271,8 +272,14 @@ end
 --   R = Red, Y = Yellow, C = Cyan, M = Magenta, U = blUe, W = White
 --
 --   . = empty   (transparent, draws nothing)
+-- cool-retro-term applies post-processing (tint/chroma/bloom/rgb-shift), so
+-- some source palette colors do not survive as expected. To keep regular text
+-- coloring unchanged, we only remap sprite colors here.
+-- Override with WG_SPRITE_COLOR_PROFILE=default for the original palette.
 
-local BLOCK = "█"
+local BLOCK = " "
+local spriteColorProfile = (os.getenv("WG_SPRITE_COLOR_PROFILE") or "crt"):lower()
+local useCrtSpriteCompensation = (spriteColorProfile ~= "default")
 
 local function setPixelAttr(ch)
 	-- Clear all attributes first (BRIGHT/DIM/BOLD from previous draws persist
@@ -291,12 +298,28 @@ local function setPixelAttr(ch)
 	elseif ch == "W" then
 		SetWhite()
 	elseif ch == "O" then
+		-- CRT compensation: darker source to land closer to orange on-screen.
+		if useCrtSpriteCompensation then
+			SetDarkOrange()
+		else
 		SetOrange()
+		end
 	elseif ch == "D" then
+		-- CRT compensation: less-dark source to avoid turning pure red.
+		if useCrtSpriteCompensation then
+			SetOrange()
+		else
 		SetDarkOrange()
+		end
 	elseif ch == "B" then
+		-- CRT compensation: beige often collapses toward green tint.
+		if useCrtSpriteCompensation then
+			SetYellow()
+		else
 		SetBeige()
+		end
 	end
+	SetReverse()
 end
 
 local function renderSpriteRow(x, y, encoded)
