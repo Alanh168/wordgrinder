@@ -116,15 +116,6 @@ enum
 	/* These cannot appear in text. */
 	DPY_BRIGHT = (1<<4),
 	DPY_DIM = (1<<5),
-	DPY_COLOR_RED = (1<<6),
-	DPY_COLOR_YELLOW = (1<<7),
-	DPY_COLOR_CYAN = (1<<8),
-	DPY_COLOR_BLUE = (1<<9),
-	DPY_COLOR_MAGENTA = (1<<10),
-	DPY_COLOR_WHITE = (1<<11),
-	DPY_COLOR_ORANGE = (1<<12),
-	DPY_COLOR_DARKORANGE = (1<<13),
-	DPY_COLOR_BEIGE = (1<<14),
 };
 
 extern void dpy_init(const char* argv[]);

@@ -100,11 +100,16 @@ static int writestyled_cb(lua_State* L)
 	const char* revon = s + forceinteger(L, 5) - 1;
 	const char* revoff = s + forceinteger(L, 6) - 1;
 	int sor = forceinteger(L, 7);
+	int colorindex = -1;
+	if (!lua_isnoneornil(L, 8))
+		colorindex = forceinteger(L, 8);
 
 	int attr = sor;
 	int mark = 0;
 
 	dpy_setattr(0, sor);
+	if (colorindex >= 0)
+		dpy_setcolorindex(colorindex);
 	bool first = true;
 	while (s < send)
 	{
@@ -112,11 +117,15 @@ static int writestyled_cb(lua_State* L)
 		{
 			mark = DPY_REVERSE;
 			dpy_setattr(0, attr | mark);
+			if (colorindex >= 0)
+				dpy_setcolorindex(colorindex);
 		}
 		if (s == revoff)
 		{
 			mark = 0;
 			dpy_setattr(0, attr | mark);
+			if (colorindex >= 0)
+				dpy_setcolorindex(colorindex);
 		}
 
 		uni_t c = readu8(&s);
@@ -126,6 +135,8 @@ static int writestyled_cb(lua_State* L)
 			c &= STYLE_ALL;
 			attr = c | sor;
 			dpy_setattr(0, attr | mark);
+			if (colorindex >= 0)
+				dpy_setcolorindex(colorindex);
 		}
 		else
 		{
@@ -501,31 +512,4 @@ void word_init(void)
 
 	lua_pushnumber(L, DPY_DIM);
 	lua_setfield(L, -2, "DIM");
-
-	lua_pushnumber(L, DPY_COLOR_RED);
-	lua_setfield(L, -2, "RED");
-
-	lua_pushnumber(L, DPY_COLOR_YELLOW);
-	lua_setfield(L, -2, "YELLOW");
-
-	lua_pushnumber(L, DPY_COLOR_CYAN);
-	lua_setfield(L, -2, "CYAN");
-
-	lua_pushnumber(L, DPY_COLOR_BLUE);
-	lua_setfield(L, -2, "BLUE");
-
-	lua_pushnumber(L, DPY_COLOR_MAGENTA);
-	lua_setfield(L, -2, "MAGENTA");
-
-	lua_pushnumber(L, DPY_COLOR_WHITE);
-	lua_setfield(L, -2, "WHITE");
-
-	lua_pushnumber(L, DPY_COLOR_ORANGE);
-	lua_setfield(L, -2, "ORANGE");
-
-	lua_pushnumber(L, DPY_COLOR_DARKORANGE);
-	lua_setfield(L, -2, "DARKORANGE");
-
-	lua_pushnumber(L, DPY_COLOR_BEIGE);
-	lua_setfield(L, -2, "BEIGE");
 }

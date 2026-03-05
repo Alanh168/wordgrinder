@@ -13,9 +13,6 @@
 #define KEY_TIMEOUT (KEY_MAX + 1)
 #define INDEXED_PAIR_BASE 1
 #define INDEXED_COLOUR_COUNT 256
-#define DPY_COLOUR_MASK (DPY_COLOR_RED | DPY_COLOR_YELLOW | DPY_COLOR_CYAN | \
-	DPY_COLOR_BLUE | DPY_COLOR_MAGENTA | DPY_COLOR_WHITE | \
-	DPY_COLOR_ORANGE | DPY_COLOR_DARKORANGE | DPY_COLOR_BEIGE)
 
 #if defined A_ITALIC
 /* True when the terminal advertises italics via terminfo. */
@@ -106,31 +103,7 @@ static int resolve_indexed_pair(int colour)
 	return pair;
 }
 
-/* Convert legacy DPY named-colour bits into concrete terminal colour indexes. */
-static int resolve_named_colour_index(void)
-{
-	if (attr & DPY_COLOR_RED)
-		return COLOR_RED;
-	if (attr & DPY_COLOR_YELLOW)
-		return COLOR_YELLOW;
-	if (attr & DPY_COLOR_CYAN)
-		return COLOR_CYAN;
-	if (attr & DPY_COLOR_BLUE)
-		return COLOR_BLUE;
-	if (attr & DPY_COLOR_MAGENTA)
-		return COLOR_MAGENTA;
-	if (attr & DPY_COLOR_WHITE)
-		return COLOR_WHITE;
-	if (attr & DPY_COLOR_ORANGE)
-		return (COLORS >= INDEXED_COLOUR_COUNT) ? 208 : COLOR_YELLOW;
-	if (attr & DPY_COLOR_DARKORANGE)
-		return (COLORS >= INDEXED_COLOUR_COUNT) ? 130 : COLOR_RED;
-	if (attr & DPY_COLOR_BEIGE)
-		return (COLORS >= INDEXED_COLOUR_COUNT) ? 223 : COLOR_WHITE;
-	return -1;
-}
-
-/* Map logical DPY colour flags (or indexed colour) to a curses COLOR_PAIR(). */
+/* Map active indexed colour state to a curses COLOR_PAIR(). */
 static int resolve_colour_pair(void)
 {
 	if (!has_colors())
@@ -138,14 +111,6 @@ static int resolve_colour_pair(void)
 
 	if (indexed_pair > 0)
 		return COLOR_PAIR(indexed_pair);
-
-	int colour = resolve_named_colour_index();
-	if (colour >= 0)
-	{
-		int pair = resolve_indexed_pair(colour);
-		if (pair > 0)
-			return COLOR_PAIR(pair);
-	}
 
 	return 0;
 }
@@ -250,15 +215,13 @@ void dpy_setcursor(int x, int y, bool shown)
 	move(y, x);
 }
 
-/* Update logical attributes and clear indexed colours when named colours are set. */
+/* Update logical style attributes; setnormal (0,0) also clears indexed colour. */
 void dpy_setattr(int andmask, int ormask)
 {
 	attr &= andmask;
 	attr |= ormask;
 
 	if ((andmask == 0) && (ormask == 0))
-		indexed_pair = 0;
-	else if (ormask & DPY_COLOUR_MASK)
 		indexed_pair = 0;
 
 	apply_attr();
@@ -271,7 +234,6 @@ bool dpy_setcolorindex(int colorindex)
 		indexed_pair = 0;
 	else
 		indexed_pair = resolve_indexed_pair(colorindex);
-	attr &= ~DPY_COLOUR_MASK;
 	apply_attr();
 	return indexed_pair > 0;
 }

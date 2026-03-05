@@ -10,30 +10,6 @@ local color_index_by_canonical_name = {}
 
 local setcolorindex_native = wg.setcolorindex
 
-local legacy_setter_by_index = {
-	[1] = wg.setred,
-	[3] = wg.setyellow,
-	[4] = wg.setblue,
-	[5] = wg.setmagenta,
-	[6] = wg.setcyan,
-	[7] = wg.setwhite,
-	[130] = wg.setdarkorange,
-	[208] = wg.setorange,
-	[223] = wg.setbeige,
-}
-
-local legacy_attr_by_name = {
-	red = wg.RED,
-	yellow = wg.YELLOW,
-	blue = wg.BLUE,
-	magenta = wg.MAGENTA,
-	cyan = wg.CYAN,
-	white = wg.WHITE,
-	orange = wg.ORANGE,
-	darkorange = wg.DARKORANGE,
-	beige = wg.BEIGE,
-}
-
 local function canonicalise_name(name)
 	if type(name) ~= "string" then
 		return nil
@@ -359,32 +335,13 @@ function wg.getcolorindex(name)
 	return resolve_color_index(name)
 end
 
-function wg.getcolorattr(name)
-	local canonical = canonicalise_name(name)
-	if not canonical then
-		return nil
-	end
-	return legacy_attr_by_name[canonical]
-end
-
 function wg.setcolor(color)
 	local index = resolve_color_index(color)
 	if index == nil then
 		return false
 	end
 
-	if setcolorindex_native(index) then
-		return true
-	end
-
-	local legacy_setter = legacy_setter_by_index[index]
-	if legacy_setter then
-		legacy_setter()
-		return true
-	end
-
-	return false
+	return setcolorindex_native(index)
 end
 
 wg.COLOR_NAME_BY_INDEX = color_name_by_index
-wg.COLOR_ATTR_BY_NAME = legacy_attr_by_name

@@ -78,60 +78,6 @@ static int setitalic_cb(lua_State* L)
 	return 0;
 }
 
-static int setred_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_RED);
-	return 0;
-}
-
-static int setyellow_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_YELLOW);
-	return 0;
-}
-
-static int setcyan_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_CYAN);
-	return 0;
-}
-
-static int setblue_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_BLUE);
-	return 0;
-}
-
-static int setmagenta_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_MAGENTA);
-	return 0;
-}
-
-static int setwhite_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_WHITE);
-	return 0;
-}
-
-static int setorange_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_ORANGE);
-	return 0;
-}
-
-static int setdarkorange_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_DARKORANGE);
-	return 0;
-}
-
-static int setbeige_cb(lua_State* L)
-{
-	dpy_setattr(-1, DPY_COLOR_BEIGE);
-	return 0;
-}
-
 static int setcolorindex_cb(lua_State* L)
 {
 	int colorindex = forceinteger(L, 1);
@@ -310,15 +256,6 @@ void screen_init(const char* argv[])
 		{ "setbright",                 setbright_cb },
 		{ "setdim",                    setdim_cb },
 		{ "setitalic",                 setitalic_cb },
-		{ "setred",                    setred_cb },
-		{ "setyellow",                 setyellow_cb },
-		{ "setcyan",                   setcyan_cb },
-		{ "setblue",                   setblue_cb },
-		{ "setmagenta",                setmagenta_cb },
-		{ "setwhite",                  setwhite_cb },
-		{ "setorange",                 setorange_cb },
-		{ "setdarkorange",             setdarkorange_cb },
-		{ "setbeige",                  setbeige_cb },
 		{ "setcolorindex",             setcolorindex_cb },
 		{ "setnormal",                 setnormal_cb },
 		{ "write",                     write_cb },

@@ -387,13 +387,14 @@ ParagraphClass =
 				word = w,
 				ostyle = ostyle,
 				cstyle = cstyle,
+				colorindex = nil,
 				firstword = self.sentences[wn],
 				paragraphfirstword = (wn == 1)
 			}
 			FireEvent(Event.DrawWord, payload)
 
 			ostyle = WriteStyled(x+xs[wn], y, payload.word,
-				payload.ostyle, nil, nil, payload.cstyle)
+				payload.ostyle, nil, nil, payload.cstyle, payload.colorindex)
 		end
 	end,
 
@@ -447,13 +448,14 @@ ParagraphClass =
 				word = self[w],
 				ostyle = ostyle,
 				cstyle = cstyle,
+				colorindex = nil,
 				firstword = self.sentences[wn],
 				paragraphfirstword = (wn == 1)
 			}
 			FireEvent(Event.DrawWord, payload)
 
 			ostyle = WriteStyled(x+self.xs[w], y, payload.word,
-				payload.ostyle, s, e, payload.cstyle)
+				payload.ostyle, s, e, payload.cstyle, payload.colorindex)
 		end
 	end,
 
