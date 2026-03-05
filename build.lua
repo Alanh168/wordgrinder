@@ -503,6 +503,7 @@ rule manpage
 
 emit("build ", OBJDIR.."/luascripts.c: luascripts ", table.concat({
     "src/lua/_prologue.lua",
+    "src/lua/colors.lua",
     "src/lua/events.lua",
     "src/lua/main.lua",
     "src/lua/xml.lua",

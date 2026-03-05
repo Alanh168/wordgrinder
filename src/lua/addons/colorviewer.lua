@@ -12,6 +12,7 @@ local SetNormal = wg.setnormal
 local SetBright = wg.setbright
 local SetReverse = wg.setreverse
 local SetColorIndex = wg.setcolorindex
+local GetColorName = wg.getcolorname
 local GetBoundedString = wg.getboundedstring
 
 local COLORS_PER_PAGE = 6
@@ -38,7 +39,8 @@ local function drawColorCell(x, y, w, index)
 		Write(x, y, GetBoundedString("Color Unavailable", swatchWidth))
 	end
 
-	local label = string_format("color# %3d", index)
+	local colorName = GetColorName(index) or "unnamed"
+	local label = string_format("color# %3d  %s", index, colorName)
 	label = GetBoundedString(label, max(0, labelWidth))
 	Write(x + swatchWidth + 1, y, label)
 end

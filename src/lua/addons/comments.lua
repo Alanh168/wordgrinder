@@ -4,6 +4,8 @@
 
 local GetWordText = wg.getwordtext
 local bor = bit32.bor
+local GetColorAttr = wg.getcolorattr
+local commentColorAttr = GetColorAttr("cadmiumorange") or wg.RED
 
 do
 	local in_comment = false
@@ -34,7 +36,7 @@ do
 
 		local highlight = in_comment or (markers > 0)
 		if highlight then
-			payload.cstyle = bor(payload.cstyle, wg.DIM, wg.RED)
+			payload.cstyle = bor(payload.cstyle, wg.DIM, commentColorAttr)
 		end
 
 		if (markers % 2) == 1 then

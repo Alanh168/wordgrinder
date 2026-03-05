@@ -11,15 +11,7 @@ local SetNormal = wg.setnormal
 local SetBright = wg.setbright
 local SetDim = wg.setdim
 local SetReverse = wg.setreverse
-local SetRed = wg.setred
-local SetYellow = wg.setyellow
-local SetCyan = wg.setcyan
-local SetBlue = wg.setblue
-local SetMagenta = wg.setmagenta
-local SetWhite = wg.setwhite
-local SetOrange = wg.setorange
-local SetDarkOrange = wg.setdarkorange
-local SetBeige = wg.setbeige
+local SetColor = wg.setcolor
 local GetWordText = wg.getwordtext
 
 -----------------------------------------------------------------------------
@@ -288,37 +280,37 @@ local function setPixelAttr(ch)
 	-- via dpy_setattr's OR mask, turning every color into bold-yellow)
 	SetNormal()
 	if ch == "R" then
-		SetRed()
+		SetColor("red")
 	elseif ch == "Y" then
-		SetYellow()
+		SetColor("yellow")
 	elseif ch == "C" then
-		SetCyan()
+		SetColor("cyan")
 	elseif ch == "U" then
-		SetBlue()
+		SetColor("blue")
 	elseif ch == "M" then
-		SetMagenta()
+		SetColor("magenta")
 	elseif ch == "W" then
-		SetWhite()
+		SetColor("white")
 	elseif ch == "O" then
 		-- CRT compensation: darker source to land closer to orange on-screen.
 		if useCrtSpriteCompensation then
-			SetDarkOrange()
+			SetColor("darkorange")
 		else
-		SetOrange()
+			SetColor("orange")
 		end
 	elseif ch == "D" then
 		-- CRT compensation: less-dark source to avoid turning pure red.
 		if useCrtSpriteCompensation then
-			SetOrange()
+			SetColor("orange")
 		else
-		SetDarkOrange()
+			SetColor("darkorange")
 		end
 	elseif ch == "B" then
 		-- CRT compensation: beige often collapses toward green tint.
 		if useCrtSpriteCompensation then
-			SetYellow()
+			SetColor("yellow")
 		else
-		SetBeige()
+			SetColor("beige")
 		end
 	end
 	SetReverse()
