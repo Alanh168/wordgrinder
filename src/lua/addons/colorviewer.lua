@@ -38,7 +38,7 @@ local function drawColorCell(x, y, w, index)
 		Write(x, y, GetBoundedString("Color Unavailable", swatchWidth))
 	end
 
-	local label = string_format("color # %3d", index)
+	local label = string_format("color# %3d", index)
 	label = GetBoundedString(label, max(0, labelWidth))
 	Write(x + swatchWidth + 1, y, label)
 end
@@ -60,7 +60,7 @@ function Cmd.ColorViewerUI()
 		CentreInField(0, 0, sw, " Color Viewer ")
 		Write(0, sh - 1, hborder)
 		CentreInField(1, 2, sw - 2,
-			string_format("Page %d/%d   init_pair(COLOR_PAIR_ID, color #, -1): %d to %d",
+			string_format("Page %d/%d   init_pair(COLOR_PAIR_ID, color#, -1): %d to %d",
 				page + 1, TOTAL_PAGES, firstIndex, lastIndex))
 		SetNormal()
 
