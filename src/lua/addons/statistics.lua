@@ -4,6 +4,7 @@
 
 local string_format = string.format
 local int = math.floor
+local min = math.min
 local max = math.max
 local Write = wg.write
 local GetChar = wg.getchar
@@ -90,6 +91,18 @@ local function formatNumber(n)
 		result = result .. s:sub(i, i)
 	end
 	return result
+end
+
+local function getMonsterBestiary()
+	local getter = rawget(_G, "GetMonsterBestiary")
+	if type(getter) ~= "function" then
+		return {}
+	end
+	local ok, monsters = pcall(getter)
+	if not ok or type(monsters) ~= "table" then
+		return {}
+	end
+	return monsters
 end
 
 -----------------------------------------------------------------------------
@@ -729,6 +742,93 @@ function Cmd.StatisticsUI()
 			local sw, sh = ScreenWidth, ScreenHeight
 			local pageSize = max(1, sh - 14)
 			scrollOffset = scrollOffset + pageSize
+		end
+	end
+
+	QueueRedraw()
+	return true
+end
+
+-----------------------------------------------------------------------------
+-- Battle Select UI
+
+function Cmd.BattleSelectUI()
+	if logDirty then
+		saveWordCountLog()
+	end
+
+	local monsters = getMonsterBestiary()
+	local queueSlots = 6
+
+	local function drawScreen()
+		ResizeScreen()
+		wg.clearscreen()
+
+		local sw, sh = ScreenWidth, ScreenHeight
+
+		-- Draw an overlay window whose total height is half the screen.
+		local outerHeight = max(8, int(sh / 2))
+		if outerHeight > sh - 2 then
+			outerHeight = sh - 2
+		end
+		local boxH = max(6, outerHeight - 2)
+		local boxW = max(36, sw - 8)
+		if boxW > sw - 4 then
+			boxW = sw - 4
+		end
+		local boxX = max(1, int((sw - boxW) / 2))
+		local boxY = max(0, int((sh - (boxH + 2)) / 2))
+
+		SetBright()
+		DrawTitledBox(boxX, boxY, boxW, boxH, " Battle Select ")
+		SetNormal()
+
+		local contentX = boxX + 1
+		local contentY = boxY + 1
+		local contentW = boxW
+
+		-- Row 1: six queue boxes.
+		local slotY = contentY + 1
+		local slotGap = 1
+		local slotInnerW = int((contentW - (queueSlots - 1) * slotGap) / queueSlots) - 2
+		if slotInnerW < 0 then
+			slotGap = 0
+			slotInnerW = int(contentW / queueSlots) - 2
+		end
+		slotInnerW = max(0, min(slotInnerW, 10))
+		local totalSlotsW = queueSlots * (slotInnerW + 2) + (queueSlots - 1) * slotGap
+		local slotX = contentX + int((contentW - totalSlotsW) / 2)
+		if slotX < contentX then
+			slotX = contentX
+		end
+		for i = 0, queueSlots - 1 do
+			local x = slotX + i * (slotInnerW + 2 + slotGap)
+			DrawBox(x, slotY, slotInnerW, 1)
+		end
+
+		-- Split into row 1 (queue boxes) and row 2 (monster render area).
+		local dividerY = slotY + 3
+		if dividerY <= (boxY + boxH - 2) then
+			SetDim()
+			Write(contentX, dividerY, string.rep("─", contentW))
+			SetNormal()
+		end
+
+		-- Row 2 is reserved for monster rendering (intentionally empty for now).
+
+		CentreInField(contentX, boxY + boxH - 1, contentW, "RETURN or ^C: Close")
+		CentreInField(contentX, boxY + boxH, contentW,
+			string_format("%d bestiary entries loaded", #monsters))
+
+		wg.hidecursor()
+		wg.sync()
+	end
+
+	while true do
+		drawScreen()
+		local key = GetChar()
+		if (key == "KEY_^C") or (key == "KEY_RETURN") or (key == "KEY_ENTER") or (key == "KEY_ESCAPE") then
+			break
 		end
 	end
 

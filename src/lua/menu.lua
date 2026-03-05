@@ -141,6 +141,7 @@ local GlobalSettingsMenu = CreateMenu("Global settings",
 local GameMenu = CreateMenu("Game",
 {
 	{"Gcharacter",  "C", "Character",      nil, Cmd.CharacterUI},
+	{"Gbattle",     "B", "Battle Select...", nil, Cmd.BattleSelectUI},
 	{"Gcolorviewer","V", "Color Viewer...", nil, Cmd.ColorViewerUI},
 })
 
