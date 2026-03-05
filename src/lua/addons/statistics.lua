@@ -737,6 +737,69 @@ function Cmd.StatisticsUI()
 end
 
 -----------------------------------------------------------------------------
+-- Full-screen Character UI (sprite only)
+
+function Cmd.CharacterUI()
+	if logDirty then
+		saveWordCountLog()
+	end
+
+	local today = getToday()
+	local todayCount = dailyLog[today] or 0
+
+	local function drawScreen()
+		ResizeScreen()
+		wg.clearscreen()
+
+		local sw, sh = ScreenWidth, ScreenHeight
+
+		SetBright()
+		local hborder = string.rep("─", sw)
+		Write(0, 0, hborder)
+		CentreInField(0, 0, sw, " Character ")
+		Write(0, sh - 1, hborder)
+		SetNormal()
+
+		local innerX = 1
+		local innerW = sw - 2
+
+		local spriteTop = 2
+		local spriteBottom = sh - 4
+		local availableHeight = spriteBottom - spriteTop + 1
+		local sprite = getEvolutionSprite(todayCount, availableHeight)
+		local spriteHeight = #sprite
+		local spriteWidth = #(sprite[1] or "")
+		local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight + 1) / 2)
+		if spriteY < spriteTop then
+			spriteY = spriteTop
+		end
+		local spriteX = innerX + int((innerW - spriteWidth) / 2)
+		for i, line in ipairs(sprite) do
+			local y = spriteY + i - 1
+			if (y >= spriteTop) and (y <= spriteBottom) then
+				renderSpriteRow(spriteX, y, line)
+			end
+		end
+		SetNormal()
+
+		CentreInField(innerX, sh - 3, innerW, "RETURN or ^C: Close")
+		wg.hidecursor()
+		wg.sync()
+	end
+
+	while true do
+		drawScreen()
+		local key = GetChar()
+		if (key == "KEY_^C") or (key == "KEY_RETURN") or (key == "KEY_ENTER") or (key == "KEY_ESCAPE") then
+			break
+		end
+	end
+
+	QueueRedraw()
+	return true
+end
+
+-----------------------------------------------------------------------------
 -- Initialization
 
 do
