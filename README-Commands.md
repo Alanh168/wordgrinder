@@ -23,3 +23,11 @@ sudo env
     LDFLAGS="-L/opt/homebrew/opt/llvm/lib -lunwind" 
     sudo gmake clean all
 
+# Newest Install Steps:
+make
+sudo cp /Users/alanmhernandez/repos/writing-env/wordgrinder/bin/wordgrinder-test /usr/local/bin/wordgrinder-test
+sudo cp ~/repos/writing-env/wordgrinder/bin/wordgrinder-test /usr/local/bin/wordgrinder-test
+sudo xattr -d com.apple.provenance /usr/local/bin/wordgrinder-test 2>/dev/null || true
+sudo xattr -d com.apple.quarantine /usr/local/bin/wordgrinder-test 2>/dev/null || true
+sudo codesign --force --sign - /usr/local/bin/wordgrinder-test
+codesign --verify --verbose=4 /usr/local/bin/wordgrinder-test
