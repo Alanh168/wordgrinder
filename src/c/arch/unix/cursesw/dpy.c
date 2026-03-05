@@ -15,8 +15,7 @@
 #define INDEXED_COLOUR_COUNT 256
 #define DPY_COLOUR_MASK (DPY_COLOR_RED | DPY_COLOR_YELLOW | DPY_COLOR_CYAN | \
 	DPY_COLOR_BLUE | DPY_COLOR_MAGENTA | DPY_COLOR_WHITE | \
-	DPY_COLOR_ORANGE | DPY_COLOR_DARKORANGE | DPY_COLOR_BEIGE | \
-	DPY_COLOR_TEAL)
+	DPY_COLOR_ORANGE | DPY_COLOR_DARKORANGE | DPY_COLOR_BEIGE)
 
 #if defined A_ITALIC
 static bool has_italics = false;
@@ -128,8 +127,6 @@ static int resolve_colour_pair(void)
 		return COLOR_PAIR(8);
 	if (attr & DPY_COLOR_BEIGE)
 		return COLOR_PAIR(9);
-	if (attr & DPY_COLOR_TEAL)
-		return COLOR_PAIR(10);
 	return 0;
 }
 
@@ -208,14 +205,12 @@ void dpy_start(void)
 			init_pair(7, 208, -1);   /* orange (255,135,0) */
 			init_pair(8, 130, -1);   /* dark orange (175,95,0) */
 			init_pair(9, 223, -1);   /* beige (255,215,175) */
-			init_pair(10, 37, -1);   /* teal (0,175,175) */
 		}
 		else
 		{
 			init_pair(7, COLOR_YELLOW, -1);  /* orange fallback */
 			init_pair(8, COLOR_RED, -1);     /* dark orange fallback */
 			init_pair(9, COLOR_WHITE, -1);   /* beige fallback */
-			init_pair(10, COLOR_CYAN, -1);   /* teal fallback */
 		}
 	}
 }
