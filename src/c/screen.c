@@ -132,6 +132,14 @@ static int setbeige_cb(lua_State* L)
 	return 0;
 }
 
+static int setcolorindex_cb(lua_State* L)
+{
+	int colorindex = forceinteger(L, 1);
+	bool ok = dpy_setcolorindex(colorindex);
+	lua_pushboolean(L, ok);
+	return 1;
+}
+
 static int setnormal_cb(lua_State* L)
 {
 	dpy_setattr(0, 0);
@@ -311,6 +319,7 @@ void screen_init(const char* argv[])
 		{ "setorange",                 setorange_cb },
 		{ "setdarkorange",             setdarkorange_cb },
 		{ "setbeige",                  setbeige_cb },
+		{ "setcolorindex",             setcolorindex_cb },
 		{ "setnormal",                 setnormal_cb },
 		{ "write",                     write_cb },
 		{ "cleararea",                 cleararea_cb },

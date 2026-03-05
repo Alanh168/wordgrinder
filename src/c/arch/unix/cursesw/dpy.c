@@ -11,10 +11,154 @@
 #include <time.h>
 
 #define KEY_TIMEOUT (KEY_MAX + 1)
+#define INDEXED_PAIR_BASE 16
+#define INDEXED_COLOUR_COUNT 256
+#define DPY_COLOUR_MASK (DPY_COLOR_RED | DPY_COLOR_YELLOW | DPY_COLOR_CYAN | \
+	DPY_COLOR_BLUE | DPY_COLOR_MAGENTA | DPY_COLOR_WHITE | \
+	DPY_COLOR_ORANGE | DPY_COLOR_DARKORANGE | DPY_COLOR_BEIGE | \
+	DPY_COLOR_TEAL)
 
 #if defined A_ITALIC
 static bool has_italics = false;
 #endif
+
+static int attr = 0;
+static int indexed_pair = 0;
+static int indexed_pair_capacity = 0;
+static int indexed_pairs_used = 0;
+static int indexed_colour_to_pair[INDEXED_COLOUR_COUNT];
+static bool indexed_pairs_initialised = false;
+
+static int clamp_colour_index(int colour)
+{
+	if (colour < 0)
+		return 0;
+	if (colour > (INDEXED_COLOUR_COUNT - 1))
+		colour = INDEXED_COLOUR_COUNT - 1;
+	return colour;
+}
+
+static void reset_indexed_pair_cache(void)
+{
+	indexed_pair = 0;
+	indexed_pairs_used = 0;
+	memset(indexed_colour_to_pair, 0, sizeof(indexed_colour_to_pair));
+}
+
+static void init_indexed_pairs(void)
+{
+	if (indexed_pairs_initialised)
+		return;
+
+	indexed_pairs_initialised = true;
+	indexed_pair_capacity = 0;
+
+	if (!has_colors())
+		return;
+
+	if (COLOR_PAIRS <= INDEXED_PAIR_BASE)
+		return;
+
+	indexed_pair_capacity = COLOR_PAIRS - INDEXED_PAIR_BASE;
+	reset_indexed_pair_cache();
+}
+
+static int resolve_indexed_pair(int colour)
+{
+	init_indexed_pairs();
+
+	if (!has_colors() || (indexed_pair_capacity <= 0))
+		return 0;
+
+	colour = clamp_colour_index(colour);
+	int pair = indexed_colour_to_pair[colour];
+	if (pair > 0)
+		return pair;
+	if (pair < 0)
+		return 0;
+
+	if (colour >= COLORS)
+	{
+		indexed_colour_to_pair[colour] = -1;
+		return 0;
+	}
+
+	if (indexed_pairs_used >= indexed_pair_capacity)
+	{
+		indexed_colour_to_pair[colour] = -1;
+		return 0;
+	}
+
+	pair = INDEXED_PAIR_BASE + indexed_pairs_used;
+	indexed_pairs_used++;
+
+	if (init_pair(pair, colour, -1) == ERR)
+	{
+		indexed_colour_to_pair[colour] = -1;
+		return 0;
+	}
+
+	indexed_colour_to_pair[colour] = pair;
+	return pair;
+}
+
+static int resolve_colour_pair(void)
+{
+	if (!has_colors())
+		return 0;
+
+	if (indexed_pair > 0)
+		return COLOR_PAIR(indexed_pair);
+
+	if (attr & DPY_COLOR_RED)
+		return COLOR_PAIR(1);
+	if (attr & DPY_COLOR_YELLOW)
+		return COLOR_PAIR(2);
+	if (attr & DPY_COLOR_CYAN)
+		return COLOR_PAIR(3);
+	if (attr & DPY_COLOR_BLUE)
+		return COLOR_PAIR(4);
+	if (attr & DPY_COLOR_MAGENTA)
+		return COLOR_PAIR(5);
+	if (attr & DPY_COLOR_WHITE)
+		return COLOR_PAIR(6);
+	if (attr & DPY_COLOR_ORANGE)
+		return COLOR_PAIR(7);
+	if (attr & DPY_COLOR_DARKORANGE)
+		return COLOR_PAIR(8);
+	if (attr & DPY_COLOR_BEIGE)
+		return COLOR_PAIR(9);
+	if (attr & DPY_COLOR_TEAL)
+		return COLOR_PAIR(10);
+	return 0;
+}
+
+static void apply_attr(void)
+{
+	int cattr = 0;
+	if (attr & DPY_ITALIC)
+	{
+		#if defined A_ITALIC
+			if (has_italics)
+				cattr |= A_ITALIC;
+			else
+				cattr |= A_BOLD;
+		#else
+			cattr |= A_BOLD;
+		#endif
+	}
+	if (attr & (DPY_BOLD|DPY_BRIGHT))
+		cattr |= A_BOLD;
+	if (attr & DPY_DIM)
+		cattr |= A_DIM;
+	if (attr & DPY_UNDERLINE)
+		cattr |= A_UNDERLINE;
+	if (attr & DPY_REVERSE)
+		cattr |= A_REVERSE;
+
+	cattr |= resolve_colour_pair();
+	attrset(cattr);
+}
 
 void dpy_init(const char* argv[])
 {
@@ -26,6 +170,13 @@ void dpy_init(const char* argv[])
 
 void dpy_start(void)
 {
+	attr = 0;
+	indexed_pair = 0;
+	indexed_pair_capacity = 0;
+	indexed_pairs_used = 0;
+	memset(indexed_colour_to_pair, 0, sizeof(indexed_colour_to_pair));
+	indexed_pairs_initialised = false;
+
 	initscr();
 	raw();
 	noecho();
@@ -57,12 +208,14 @@ void dpy_start(void)
 			init_pair(7, 208, -1);   /* orange (255,135,0) */
 			init_pair(8, 130, -1);   /* dark orange (175,95,0) */
 			init_pair(9, 223, -1);   /* beige (255,215,175) */
+			init_pair(10, 37, -1);   /* teal (0,175,175) */
 		}
 		else
 		{
 			init_pair(7, COLOR_YELLOW, -1);  /* orange fallback */
 			init_pair(8, COLOR_RED, -1);     /* dark orange fallback */
 			init_pair(9, COLOR_WHITE, -1);   /* beige fallback */
+			init_pair(10, COLOR_CYAN, -1);   /* teal fallback */
 		}
 	}
 }
@@ -75,6 +228,7 @@ void dpy_shutdown(void)
 void dpy_clearscreen(void)
 {
 	erase();
+	reset_indexed_pair_cache();
 }
 
 void dpy_getscreensize(int* x, int* y)
@@ -94,50 +248,26 @@ void dpy_setcursor(int x, int y, bool shown)
 
 void dpy_setattr(int andmask, int ormask)
 {
-	static int attr = 0;
 	attr &= andmask;
 	attr |= ormask;
 
-	int cattr = 0;
-	if (attr & DPY_ITALIC)
-	{
-		#if defined A_ITALIC
-			if (has_italics)
-				cattr |= A_ITALIC;
-			else
-				cattr |= A_BOLD;
-		#else
-			cattr |= A_BOLD;
-		#endif
-	}
-	if (attr & (DPY_BOLD|DPY_BRIGHT))
-		cattr |= A_BOLD;
-	if (attr & DPY_DIM)
-		cattr |= A_DIM;
-	if (attr & DPY_UNDERLINE)
-		cattr |= A_UNDERLINE;
-	if (attr & DPY_REVERSE)
-		cattr |= A_REVERSE;
-	if (attr & DPY_COLOR_RED)
-		cattr |= COLOR_PAIR(1);
-	else if (attr & DPY_COLOR_YELLOW)
-		cattr |= COLOR_PAIR(2);
-	else if (attr & DPY_COLOR_CYAN)
-		cattr |= COLOR_PAIR(3);
-	else if (attr & DPY_COLOR_BLUE)
-		cattr |= COLOR_PAIR(4);
-	else if (attr & DPY_COLOR_MAGENTA)
-		cattr |= COLOR_PAIR(5);
-	else if (attr & DPY_COLOR_WHITE)
-		cattr |= COLOR_PAIR(6);
-	else if (attr & DPY_COLOR_ORANGE)
-		cattr |= COLOR_PAIR(7);
-	else if (attr & DPY_COLOR_DARKORANGE)
-		cattr |= COLOR_PAIR(8);
-	else if (attr & DPY_COLOR_BEIGE)
-		cattr |= COLOR_PAIR(9);
+	if ((andmask == 0) && (ormask == 0))
+		indexed_pair = 0;
+	else if (ormask & DPY_COLOUR_MASK)
+		indexed_pair = 0;
 
-	attrset(cattr);
+	apply_attr();
+}
+
+bool dpy_setcolorindex(int colorindex)
+{
+	if (colorindex < 0)
+		indexed_pair = 0;
+	else
+		indexed_pair = resolve_indexed_pair(colorindex);
+	attr &= ~DPY_COLOUR_MASK;
+	apply_attr();
+	return indexed_pair > 0;
 }
 
 void dpy_writechar(int x, int y, uni_t c)

@@ -258,7 +258,9 @@ end
 -----------------------------------------------------------------------------
 -- Color-attribute sprite rendering
 --
--- Every visible pixel is a full block (█) drawn with an actual terminal color.
+-- Every visible pixel is drawn as a solid terminal cell background color.
+-- We set REVERSE and draw a space to fill the entire cell height, which also
+-- fills cool-retro-term line-spacing gaps between rows.
 -- CRT's shader detects chromatic colors (saturation > 0.2) and passes them
 -- through as actual colors. Achromatic colors (white/grey) are converted to
 -- the terminal's green fontColor as usual.
