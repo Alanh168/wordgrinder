@@ -142,6 +142,7 @@ local GameMenu = CreateMenu("Game",
 {
 	{"Gcharacter",  "C", "Character",      nil, Cmd.CharacterUI},
 	{"Gbattle",     "B", "Battle Select...", nil, Cmd.BattleSelectUI},
+	{"Gbestiary",   "E", "Bestiary...",     nil, Cmd.BestiaryUI},
 	{"Gcolorviewer","V", "Color Viewer...", nil, Cmd.ColorViewerUI},
 })
 

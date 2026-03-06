@@ -586,6 +586,19 @@ local function getEvolutionSprite(wordCount, availableWidth, availableHeight, pi
 end
 
 -----------------------------------------------------------------------------
+-- Expose sprite utilities for other addons (e.g. bestiary)
+
+GlobalSpriteUtils = {
+	getSpriteByKey = getSpriteByKey,
+	getSpriteSize = getSpriteSize,
+	renderSpriteRow = renderSpriteRow,
+	fitSpriteToArea = fitSpriteToArea,
+	getSpriteDefinition = getSpriteDefinition,
+	DEFAULT_PIXEL_WIDTH = DEFAULT_SPRITE_PIXEL_WIDTH,
+	BATTLE_PIXEL_WIDTH = BATTLE_SPRITE_PIXEL_WIDTH,
+}
+
+-----------------------------------------------------------------------------
 -- Log file I/O
 
 local function loadWordCountLog()
@@ -975,15 +988,16 @@ function Cmd.BattleSelectUI()
 end
 
 -----------------------------------------------------------------------------
--- Full-screen Character UI (sprite only)
+-- Full-screen Character UI (equipment slots)
 
 function Cmd.CharacterUI()
-	if logDirty then
-		saveWordCountLog()
+	local function drawEquipBox(x, y, w, h, label)
+		SetNormal()
+		DrawBox(x, y, w, h)
+		SetDim()
+		CentreInField(x + 1, y + int(h / 2), w, label)
+		SetNormal()
 	end
-
-	local today = getToday()
-	local todayCount = dailyLog[today] or 0
 
 	local function drawScreen()
 		ResizeScreen()
@@ -998,32 +1012,50 @@ function Cmd.CharacterUI()
 		Write(0, sh - 1, hborder)
 		SetNormal()
 
-		local innerX = 1
-		local innerW = sw - 2
+		-- Equipment layout: 6 boxes arranged like a paper-doll
+		--       [  Head  ]
+		-- [L.Arm][ Torso ][R.Arm]
+		-- [L.Leg]         [R.Leg]
 
-		local spriteTop = 2
-		local spriteBottom = sh - 4
-		local availableHeight = spriteBottom - spriteTop + 1
-		local sprite, palette = getEvolutionSprite(
-			todayCount,
-			innerW,
-			availableHeight,
-			DEFAULT_SPRITE_PIXEL_WIDTH)
-		if sprite and palette then
-			local spriteWidth, spriteHeight = getSpriteSize(sprite, DEFAULT_SPRITE_PIXEL_WIDTH)
-			local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight + 1) / 2)
-			if spriteY < spriteTop then
-				spriteY = spriteTop
-			end
-			local spriteX = innerX + int((innerW - spriteWidth) / 2)
-			for i, row in ipairs(sprite) do
-				local y = spriteY + i - 1
-				if (y >= spriteTop) and (y <= spriteBottom) then
-					renderSpriteRow(spriteX, y, row, palette, DEFAULT_SPRITE_PIXEL_WIDTH)
-				end
-			end
-		end
-		SetNormal()
+		local innerW = sw - 4
+		local innerX = 2
+		local contentTop = 2
+		local contentBottom = sh - 4
+		local contentH = contentBottom - contentTop
+
+		-- Box dimensions
+		local boxW = max(8, min(16, int(innerW / 3) - 2))
+		local boxH = max(3, min(8, int(contentH / 3) - 1))
+
+		-- Center the grid horizontally
+		local gridW = boxW * 3 + 4  -- 3 columns + gaps
+		local gridX = innerX + int((innerW - gridW) / 2)
+		if gridX < innerX then gridX = innerX end
+
+		-- Center the grid vertically
+		local gridH = boxH * 3 + 4  -- 3 rows + gaps
+		local gridY = contentTop + int((contentH - gridH) / 2)
+		if gridY < contentTop then gridY = contentTop end
+
+		local col1 = gridX
+		local col2 = gridX + boxW + 2
+		local col3 = gridX + (boxW + 2) * 2
+
+		local row1 = gridY
+		local row2 = gridY + boxH + 2
+		local row3 = gridY + (boxH + 2) * 2
+
+		-- Row 1: Head (center column)
+		drawEquipBox(col2, row1, boxW, boxH, "Head")
+
+		-- Row 2: Left Arm, Torso, Right Arm
+		drawEquipBox(col1, row2, boxW, boxH, "L.Arm")
+		drawEquipBox(col2, row2, boxW, boxH, "Torso")
+		drawEquipBox(col3, row2, boxW, boxH, "R.Arm")
+
+		-- Row 3: Left Leg (col1), Right Leg (col3)
+		drawEquipBox(col1, row3, boxW, boxH, "L.Leg")
+		drawEquipBox(col3, row3, boxW, boxH, "R.Leg")
 
 		CentreInField(innerX, sh - 3, innerW, "RETURN or ^C: Close")
 		wg.hidecursor()
