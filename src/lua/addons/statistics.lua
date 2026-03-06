@@ -14,6 +14,7 @@ local SetDim = wg.setdim
 local SetReverse = wg.setreverse
 local SetColor = wg.setcolor
 local GetWordText = wg.getwordtext
+local GetCwd = wg.getcwd or function() return nil end
 
 -----------------------------------------------------------------------------
 -- State
@@ -261,238 +262,327 @@ local function renderBigNumber(numStr)
 end
 
 -----------------------------------------------------------------------------
--- Color-attribute sprite rendering
---
--- Every visible pixel is drawn as a solid terminal cell background color.
--- We set REVERSE and draw a space to fill the entire cell height, which also
--- fills cool-retro-term line-spacing gaps between rows.
--- CRT's shader detects chromatic colors (saturation > 0.2) and passes them
--- through as actual colors. Achromatic colors (white/grey) are converted to
--- the terminal's green fontColor as usual.
---
--- 256-color palette (accurate sprite colors):
---   O = Orange      (index 208, #ff8700) → main body
---   D = Dark orange (index 130, #af5f00) → darker body areas
---   B = Beige       (index 223, #ffd7af) → claws/skin
---
--- Standard colors (used in other sprites / UI):
---   R = Red, Y = Yellow, C = Cyan, M = Magenta, U = blUe, W = White
---
---   . = empty   (transparent, draws nothing)
--- cool-retro-term applies post-processing (tint/chroma/bloom/rgb-shift), so
--- some source palette colors do not survive as expected. To keep regular text
--- coloring unchanged, we only remap sprite colors here.
--- Override with WG_SPRITE_COLOR_PROFILE=default for the original palette.
+-- Palette sprite rendering
 
 local BLOCK = " "
-local spriteColorProfile = (os.getenv("WG_SPRITE_COLOR_PROFILE") or "crt"):lower()
-local useCrtSpriteCompensation = (spriteColorProfile ~= "default")
+local DEFAULT_SPRITE_PIXEL_WIDTH = 2
+local BATTLE_SPRITE_PIXEL_WIDTH = 1
+local BATTLE_EXTRA_DOWNSCALE_STEPS = 0
+local BATTLE_WINDOW_HEIGHT_RATIO = 0.75
+local BATTLE_SLOT_MAX_INNER_W = 14
+local BATTLE_SLOT_MIN_INNER_H = 6
+local BATTLE_SLOT_MAX_INNER_H = 10
+local SetColorIndex = wg.setcolorindex
 
-local function setPixelAttr(ch)
-	-- Clear all attributes first (BRIGHT/DIM/BOLD from previous draws persist
-	-- via dpy_setattr's OR mask, turning every color into bold-yellow)
-	SetNormal()
-	if ch == "R" then
-		SetColor("red")
-	elseif ch == "Y" then
-		SetColor("yellow")
-	elseif ch == "C" then
-		SetColor("cyan")
-	elseif ch == "U" then
-		SetColor("blue")
-	elseif ch == "M" then
-		SetColor("magenta")
-	elseif ch == "W" then
-		SetColor("white")
-	elseif ch == "O" then
-		-- CRT compensation: darker source to land closer to orange on-screen.
-		if useCrtSpriteCompensation then
-			SetColor("darkorange")
-		else
-			SetColor("orange")
-		end
-	elseif ch == "D" then
-		-- CRT compensation: less-dark source to avoid turning pure red.
-		if useCrtSpriteCompensation then
-			SetColor("orange")
-		else
-			SetColor("darkorange")
-		end
-	elseif ch == "B" then
-		-- CRT compensation: beige often collapses toward green tint.
-		if useCrtSpriteCompensation then
-			SetColor("yellow")
-		else
-			SetColor("beige")
+local function loadFormattedSprites()
+	local paths = {}
+	local seen = {}
+	local function addPath(path)
+		if type(path) == "string" and path ~= "" and not seen[path] then
+			seen[path] = true
+			paths[#paths + 1] = path
 		end
 	end
-	SetReverse()
-end
 
-local function renderSpriteRow(x, y, encoded)
-	local col = 0
-	for i = 1, #encoded do
-		local ch = encoded:sub(i, i)
-		if ch ~= "." then
-			setPixelAttr(ch)
-			Write(x + col, y, BLOCK)
+	local envPath = os.getenv("WG_FORMATTED_SPRITES")
+	addPath(envPath)
+	addPath(CONFIGDIR and (CONFIGDIR .. "/formatted_sprites.lua"))
+	addPath(CONFIGDIR and (CONFIGDIR .. "/sprites/formatted_sprites.lua"))
+	addPath("extras/sprites/formatted_sprites.lua")
+	addPath("wordgrinder/extras/sprites/formatted_sprites.lua")
+
+	if debug and debug.getinfo then
+		local info = debug.getinfo(1, "S")
+		if info and type(info.source) == "string" and info.source:sub(1, 1) == "@" then
+			local scriptPath = info.source:sub(2)
+			local scriptDir = scriptPath:match("^(.*)[/\\][^/\\]+$")
+			addPath(scriptDir and (scriptDir .. "/../../../extras/sprites/formatted_sprites.lua"))
 		end
-		col = col + 1
 	end
+
+	local cwd = GetCwd()
+	addPath(cwd and (cwd .. "/extras/sprites/formatted_sprites.lua"))
+	addPath(cwd and (cwd .. "/wordgrinder/extras/sprites/formatted_sprites.lua"))
+
+	for _, path in ipairs(paths) do
+		local loader = loadfile(path)
+		if loader then
+			local ok, sprites = pcall(loader)
+			if ok and type(sprites) == "table" then
+				return sprites
+			end
+		end
+	end
+	return {}
 end
 
------------------------------------------------------------------------------
--- Character evolution sprites
--- Each stage has:
---   sprite       = full-size sprite (1 pixel = 1 char cell, color-encoded)
---   sprite_small = compact version for tight screens
---
--- Color encoding:
---   O = Orange (256-color 208) — main body
---   D = Dark orange (256-color 130) — darker body, outline details
---   B = Beige (256-color 223) — claws, teeth, skin
---   R/Y/C = Red/Yellow/Cyan — used in evolution sprites
---   . = empty (black outline / transparent — bg is already black)
---
--- Enable "Color Conversion" in CRT View menu to see actual colors.
+local formattedSprites = loadFormattedSprites()
 
 local evolutionStages = {
-	{
-		-- Agumon sprite (from orange pixel art reference)
-		-- Pixel-accurate mapping from 15×14 reference:
-		--   Black outline/eyes → . (empty, CRT bg is black)
-		--   Dark orange body   → D (256-color 130)
-		--   Orange body        → O (256-color 208)
-		--   Beige/skin claws   → B (256-color 223)
-		threshold = 0,
-		sprite = {
-			"..........DDOO.",
-			".....DDDDOOOO..",
-			"....DD.DDOOO...",
-			"..BBBB..DDO....",
-			".DBBBBB..DOOO..",
-			"....DOOOOOOOOOO",
-			"..OOOOOOOOOOOO.",
-			".....DDOOOOO...",
-			"....OOOOOOOOO..",
-			"...B.OOO.BOOO..",
-			"....DOOO..DO...",
-			".....OOOOO.....",
-			"...OO..........",
-			"..B.B..B.B.B...",
-		},
-		sprite_small = {
-			".....DDDDOOOO.",
-			"..BBBB.DDOOO..",
-			".DBBBBB..DOOO.",
-			"..OOOOOOOOOOOO.",
-			"...B.OOO.BOOO.",
-			".....OOOOO.....",
-			"..B.B..B.B.B...",
-		},
-	},
-	{
-		threshold = 500,
-		sprite = {
-			"..YYYYYYYY..",
-			".YRRCCCCRRRY.",
-			".YRR.YY.RRY.",
-			"..YRCCCCY...",
-			"Y.YRRRRRRRY.",
-			"YRYRRCCRRRY.Y",
-			".Y.RRRRRR.Y.",
-			"..YRRCCRRRY..",
-			"...YRRRRY...",
-			"...YRCCRY...",
-			"..YRC..CRY..",
-			"..YCR..RCY..",
-			"..YY....YY..",
-		},
-		sprite_small = {
-			"..YYYYYYYY..",
-			".YRR.YY.RRY.",
-			"Y.YRRRRRRY..",
-			".Y.RRRRRR.Y.",
-			"...YRRRRY...",
-			"..YRC..CRY..",
-			"..YY....YY..",
-		},
-	},
-	{
-		threshold = 1000,
-		sprite = {
-			"...YYYYYYYY...",
-			"..YCCRRRRCCCY..",
-			"..YCR.YY.RCY..",
-			"..YCRRCCRCCY..",
-			".YYRRRRRRRRYY.",
-			"Y.YRRRRRRRRY.Y",
-			"YRYRRRCCRRRYRRR",
-			".Y.RRRRRRRR.Y.",
-			"...YRRRRRRYR..",
-			"....YRRRRY....",
-			"...YRRCCRRRY...",
-			"...YRC..CRY...",
-			"..YYCR..RCYY..",
-			"..YY......YY..",
-		},
-		sprite_small = {
-			"..YYYYYYYYYY..",
-			"..YCR.YY.RCY..",
-			".YYRRRRRRRRYY.",
-			"YRYRRRCCRRRYRRR",
-			"...YRRRRRRYR..",
-			"...YRRCCRRRY...",
-			"..YYCR..RCYY..",
-			"..YY......YY..",
-		},
-	},
-	{
-		threshold = 2000,
-		sprite = {
-			"....YYYYYYYY....",
-			"...YRRCCCCRRRY...",
-			"...YRC.YY.CRY...",
-			"...YRRCCCCRRRY...",
-			"..YYRRRRRRRRYY..",
-			"Y..YRRRRRRRRY..Y",
-			"YR.YRRCCCCRRRY.RY",
-			".Y.YRRRRRRRR.Y.",
-			"...YRRRRRRRRY...",
-			"....YRRRRRRYR...",
-			"....YRRCCRRRY....",
-			"...YRC....CRY...",
-			"...YCR....RCY...",
-			"...YY......YY...",
-		},
-		sprite_small = {
-			"...YYYYYYYYYY...",
-			"...YRC.YY.CRY...",
-			"..YYRRRRRRRRYY..",
-			"YR.YRRCCCCRRRY.RY",
-			"...YRRRRRRRRY...",
-			"....YRRCCRRRY....",
-			"...YCR....RCY...",
-			"...YY......YY...",
-		},
-	},
+	{ threshold = 0, sprite_key = "agumon" },
 }
 
-local function getEvolutionSprite(wordCount, availableHeight)
+local function getStageForWordCount(wordCount)
 	local stage = evolutionStages[1]
 	for _, s in ipairs(evolutionStages) do
 		if wordCount >= s.threshold then
 			stage = s
 		end
 	end
-	-- Pick small sprite if not enough vertical space for the full one
-	if availableHeight and stage.sprite_small then
-		local fullHeight = #stage.sprite
-		if fullHeight > availableHeight and #stage.sprite_small <= availableHeight then
-			return stage.sprite_small
+	return stage
+end
+
+local function getSpriteDefinition(spriteKey)
+	if type(formattedSprites[spriteKey]) ~= "table" then
+		-- Retry in case the sprite table was generated after startup.
+		formattedSprites = loadFormattedSprites()
+	end
+	local def = formattedSprites[spriteKey]
+	if type(def) ~= "table" then
+		return nil
+	end
+	local palette = def.color_palette or def.palette
+	if type(def.sprite) ~= "table" or type(palette) ~= "table" then
+		return nil
+	end
+	return def
+end
+
+local function getSpriteSize(spriteRows, pixelWidth)
+	pixelWidth = pixelWidth or DEFAULT_SPRITE_PIXEL_WIDTH
+	local width = 0
+	for _, row in ipairs(spriteRows) do
+		if type(row) == "table" and #row > width then
+			width = #row
 		end
 	end
-	return stage.sprite
+	return width * pixelWidth, #spriteRows
+end
+
+local function getSpriteGridSize(spriteRows)
+	local width = 0
+	for _, row in ipairs(spriteRows) do
+		if type(row) == "table" and #row > width then
+			width = #row
+		end
+	end
+	return width, #spriteRows
+end
+
+local function trimSprite(spriteRows)
+	local srcWidth, srcHeight = getSpriteGridSize(spriteRows)
+	local minX = srcWidth
+	local minY = srcHeight
+	local maxX = 0
+	local maxY = 0
+
+	for y, row in ipairs(spriteRows) do
+		for x, value in ipairs(row) do
+			if value and value ~= 0 then
+				if x < minX then
+					minX = x
+				end
+				if y < minY then
+					minY = y
+				end
+				if x > maxX then
+					maxX = x
+				end
+				if y > maxY then
+					maxY = y
+				end
+			end
+		end
+	end
+
+	if maxX == 0 or maxY == 0 then
+		return {}
+	end
+
+	local trimmed = {}
+	for y = minY, maxY do
+		local srcRow = spriteRows[y] or {}
+		local dstRow = {}
+		for x = minX, maxX do
+			dstRow[#dstRow + 1] = srcRow[x] or 0
+		end
+		trimmed[#trimmed + 1] = dstRow
+	end
+	return trimmed
+end
+
+local function downscaleSpriteBy2(spriteRows)
+	local reduced = {}
+	for y = 1, #spriteRows, 2 do
+		local src = spriteRows[y]
+		local dst = {}
+		for x = 1, #src, 2 do
+			dst[#dst + 1] = src[x]
+		end
+		reduced[#reduced + 1] = dst
+	end
+	return reduced
+end
+
+local function resampleSprite(spriteRows, targetWidth, targetHeight)
+	local srcWidth, srcHeight = getSpriteGridSize(spriteRows)
+	if srcWidth == 0 or srcHeight == 0 then
+		return {}
+	end
+
+	local resized = {}
+	for ty = 0, targetHeight - 1 do
+		local y0 = int(ty * srcHeight / targetHeight)
+		local y1 = int(((ty + 1) * srcHeight) / targetHeight) - 1
+		if y1 < y0 then
+			y1 = y0
+		end
+
+		local dstRow = {}
+		for tx = 0, targetWidth - 1 do
+			local x0 = int(tx * srcWidth / targetWidth)
+			local x1 = int(((tx + 1) * srcWidth) / targetWidth) - 1
+			if x1 < x0 then
+				x1 = x0
+			end
+
+			local counts = {}
+			local bestValue = 0
+			local bestCount = 0
+
+			for sy = y0 + 1, y1 + 1 do
+				local srcRow = spriteRows[sy] or {}
+				for sx = x0 + 1, x1 + 1 do
+					local value = srcRow[sx] or 0
+					if value ~= 0 then
+						local count = (counts[value] or 0) + 1
+						counts[value] = count
+						if count > bestCount then
+							bestCount = count
+							bestValue = value
+						end
+					end
+				end
+			end
+
+			if bestCount == 0 then
+				local cy = int((y0 + y1) / 2) + 1
+				local cx = int((x0 + x1) / 2) + 1
+				bestValue = (spriteRows[cy] and spriteRows[cy][cx]) or 0
+			end
+
+			dstRow[#dstRow + 1] = bestValue
+		end
+		resized[#resized + 1] = dstRow
+	end
+	return resized
+end
+
+local function fitSpriteToArea(spriteRows, maxWidth, maxHeight, pixelWidth, extraDownscaleSteps)
+	pixelWidth = pixelWidth or DEFAULT_SPRITE_PIXEL_WIDTH
+
+	local trimmed = trimSprite(spriteRows)
+	local srcWidth, srcHeight = getSpriteGridSize(trimmed)
+	if srcWidth == 0 or srcHeight == 0 then
+		return {}
+	end
+
+	local maxSpriteWidth = max(1, int(maxWidth / pixelWidth))
+	local maxSpriteHeight = max(1, maxHeight)
+	local scale = min(maxSpriteWidth / srcWidth, maxSpriteHeight / srcHeight, 1)
+	local targetWidth = max(1, int(srcWidth * scale + 0.5))
+	local targetHeight = max(1, int(srcHeight * scale + 0.5))
+	local fitted = trimmed
+
+	if targetWidth < srcWidth or targetHeight < srcHeight then
+		fitted = resampleSprite(trimmed, targetWidth, targetHeight)
+	end
+
+	local extra = extraDownscaleSteps or 0
+	local width, height = getSpriteGridSize(fitted)
+	while extra > 0 and width > 1 and height > 1 do
+		fitted = downscaleSpriteBy2(fitted)
+		width, height = getSpriteGridSize(fitted)
+		extra = extra - 1
+	end
+	return fitted
+end
+
+local function trySetPaletteIndex(colorindex)
+	if SetColorIndex(colorindex) then
+		return true
+	end
+	-- Some terminals expose only 8/16 colors; remap high xterm values to a
+	-- lower fallback index so sprites still render.
+	if colorindex >= 16 then
+		local fallback = colorindex % 16
+		if SetColorIndex(fallback) then
+			return true
+		end
+	end
+	return SetColorIndex(7)
+end
+
+local function setPaletteCellAttr(paletteEntry)
+	SetNormal()
+
+	local ok = false
+	if type(paletteEntry) == "number" then
+		ok = trySetPaletteIndex(paletteEntry)
+	elseif type(paletteEntry) == "string" then
+		ok = SetColor(paletteEntry)
+	elseif type(paletteEntry) == "table" then
+		if type(paletteEntry.index) == "number" then
+			ok = trySetPaletteIndex(paletteEntry.index)
+		elseif type(paletteEntry.name) == "string" then
+			ok = SetColor(paletteEntry.name)
+		else
+			ok = false
+		end
+	else
+		ok = false
+	end
+
+	if not ok then
+		if not SetColor("green") then
+			-- Last resort: render as reversed default terminal colors.
+		end
+	end
+
+	SetReverse()
+	return true
+end
+
+local function renderSpriteRow(x, y, row, palette, pixelWidth)
+	pixelWidth = pixelWidth or DEFAULT_SPRITE_PIXEL_WIDTH
+	local fill = string.rep(BLOCK, pixelWidth)
+	for col, paletteSlot in ipairs(row) do
+		if paletteSlot and paletteSlot ~= 0 then
+			local paletteEntry = palette[paletteSlot]
+			if paletteEntry and setPaletteCellAttr(paletteEntry) then
+				Write(x + (col - 1) * pixelWidth, y, fill)
+			end
+		end
+	end
+end
+
+local function getSpriteByKey(spriteKey, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
+	local def = getSpriteDefinition(spriteKey)
+	if not def then
+		return nil, nil
+	end
+	local spriteRows = fitSpriteToArea(
+		def.sprite,
+		availableWidth,
+		availableHeight,
+		pixelWidth,
+		extraDownscaleSteps)
+	return spriteRows, (def.color_palette or def.palette)
+end
+
+local function getEvolutionSprite(wordCount, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
+	local stage = getStageForWordCount(wordCount)
+	return getSpriteByKey(stage.sprite_key, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
 end
 
 -----------------------------------------------------------------------------
@@ -643,16 +733,28 @@ function Cmd.StatisticsUI()
 		-- Character evolution sprite
 		local spriteTop = countY + BIG_DIGIT_HEIGHT + 1
 		local spriteBottom = historyHeaderY - 1
-		local availableHeight = spriteBottom - spriteTop
-		local sprite = getEvolutionSprite(todayCount, availableHeight)
-		local spriteHeight = #sprite
-		local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight) / 2)
-		if spriteY < spriteTop then spriteY = spriteTop end
-		local spriteWidth = #(sprite[1] or "")
-		local spriteX = innerX + int((innerW - spriteWidth) / 2)
-		for i, line in ipairs(sprite) do
-			if spriteY + i - 1 < historyHeaderY then
-				renderSpriteRow(spriteX, spriteY + i - 1, line)
+		local availableHeight = spriteBottom - spriteTop + 1
+		local sprite, palette = getEvolutionSprite(
+			todayCount,
+			innerW,
+			availableHeight,
+			DEFAULT_SPRITE_PIXEL_WIDTH)
+		if sprite and palette then
+			local spriteWidth, spriteHeight = getSpriteSize(sprite, DEFAULT_SPRITE_PIXEL_WIDTH)
+			local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight + 1) / 2)
+			if spriteY < spriteTop then
+				spriteY = spriteTop
+			end
+			local spriteX = innerX + int((innerW - spriteWidth) / 2)
+			for i, row in ipairs(sprite) do
+				if spriteY + i - 1 < historyHeaderY then
+					renderSpriteRow(
+						spriteX,
+						spriteY + i - 1,
+						row,
+						palette,
+						DEFAULT_SPRITE_PIXEL_WIDTH)
+				end
 			end
 		end
 		SetNormal()
@@ -766,12 +868,13 @@ function Cmd.BattleSelectUI()
 
 		local sw, sh = ScreenWidth, ScreenHeight
 
-		-- Draw an overlay window whose total height is half the screen.
-		local outerHeight = max(8, int(sh / 2))
+		-- Character-cell sprites need more vertical space than a strict half-screen
+		-- overlay provides, otherwise the slot fit reduces them to a few cells.
+		local outerHeight = max(12, int(sh * BATTLE_WINDOW_HEIGHT_RATIO))
 		if outerHeight > sh - 2 then
 			outerHeight = sh - 2
 		end
-		local boxH = max(6, outerHeight - 2)
+		local boxH = max(8, outerHeight - 2)
 		local boxW = max(36, sw - 8)
 		if boxW > sw - 4 then
 			boxW = sw - 4
@@ -788,14 +891,23 @@ function Cmd.BattleSelectUI()
 		local contentW = boxW
 
 		-- Row 1: six queue boxes.
-		local slotY = contentY + 1
+		local slotY = contentY
 		local slotGap = 1
 		local slotInnerW = int((contentW - (queueSlots - 1) * slotGap) / queueSlots) - 2
 		if slotInnerW < 0 then
 			slotGap = 0
 			slotInnerW = int(contentW / queueSlots) - 2
 		end
-		slotInnerW = max(0, min(slotInnerW, 10))
+		slotInnerW = max(6, min(slotInnerW, BATTLE_SLOT_MAX_INNER_W))
+		local footerY = boxY + boxH
+		local footerMarginTop = 1
+		local row2MinH = 1
+		local maxSlotInnerH = footerY - footerMarginTop - row2MinH - slotY - 2
+		local slotInnerH = min(BATTLE_SLOT_MAX_INNER_H, maxSlotInnerH)
+		slotInnerH = max(BATTLE_SLOT_MIN_INNER_H, slotInnerH)
+		if slotInnerH > maxSlotInnerH then
+			slotInnerH = max(3, maxSlotInnerH)
+		end
 		local totalSlotsW = queueSlots * (slotInnerW + 2) + (queueSlots - 1) * slotGap
 		local slotX = contentX + int((contentW - totalSlotsW) / 2)
 		if slotX < contentX then
@@ -803,11 +915,35 @@ function Cmd.BattleSelectUI()
 		end
 		for i = 0, queueSlots - 1 do
 			local x = slotX + i * (slotInnerW + 2 + slotGap)
-			DrawBox(x, slotY, slotInnerW, 1)
+			SetNormal()
+			DrawBox(x, slotY, slotInnerW, slotInnerH)
+
+			local monster = monsters[i + 1]
+			local spriteKey = "agumon"
+			if type(monster) == "table" and type(monster.sprite_ref) == "string" and monster.sprite_ref ~= "" then
+				spriteKey = monster.sprite_ref
+			end
+
+			local sprite, palette = getSpriteByKey(
+				spriteKey,
+				slotInnerW,
+				slotInnerH,
+				BATTLE_SPRITE_PIXEL_WIDTH,
+				BATTLE_EXTRA_DOWNSCALE_STEPS)
+			if sprite and palette then
+				local spriteW, spriteH = getSpriteSize(sprite, BATTLE_SPRITE_PIXEL_WIDTH)
+				local drawX = x + 1 + int((slotInnerW - spriteW) / 2)
+				local drawY = slotY + 1 + int((slotInnerH - spriteH) / 2)
+				for rowi, row in ipairs(sprite) do
+					renderSpriteRow(drawX, drawY + rowi - 1, row, palette, BATTLE_SPRITE_PIXEL_WIDTH)
+				end
+			end
+			SetNormal()
 		end
+		SetNormal()
 
 		-- Split into row 1 (queue boxes) and row 2 (monster render area).
-		local dividerY = slotY + 3
+		local dividerY = slotY + slotInnerH + 2
 		if dividerY <= (boxY + boxH - 2) then
 			SetDim()
 			Write(contentX, dividerY, string.rep("─", contentW))
@@ -816,9 +952,11 @@ function Cmd.BattleSelectUI()
 
 		-- Row 2 is reserved for monster rendering (intentionally empty for now).
 
-		CentreInField(contentX, boxY + boxH - 1, contentW, "RETURN or ^C: Close")
-		CentreInField(contentX, boxY + boxH, contentW,
-			string_format("%d bestiary entries loaded", #monsters))
+		CentreInField(
+			contentX,
+			footerY,
+			contentW,
+			string_format("RETURN or ^C: Close   %d bestiary entries loaded", #monsters))
 
 		wg.hidecursor()
 		wg.sync()
@@ -866,18 +1004,23 @@ function Cmd.CharacterUI()
 		local spriteTop = 2
 		local spriteBottom = sh - 4
 		local availableHeight = spriteBottom - spriteTop + 1
-		local sprite = getEvolutionSprite(todayCount, availableHeight)
-		local spriteHeight = #sprite
-		local spriteWidth = #(sprite[1] or "")
-		local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight + 1) / 2)
-		if spriteY < spriteTop then
-			spriteY = spriteTop
-		end
-		local spriteX = innerX + int((innerW - spriteWidth) / 2)
-		for i, line in ipairs(sprite) do
-			local y = spriteY + i - 1
-			if (y >= spriteTop) and (y <= spriteBottom) then
-				renderSpriteRow(spriteX, y, line)
+		local sprite, palette = getEvolutionSprite(
+			todayCount,
+			innerW,
+			availableHeight,
+			DEFAULT_SPRITE_PIXEL_WIDTH)
+		if sprite and palette then
+			local spriteWidth, spriteHeight = getSpriteSize(sprite, DEFAULT_SPRITE_PIXEL_WIDTH)
+			local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight + 1) / 2)
+			if spriteY < spriteTop then
+				spriteY = spriteTop
+			end
+			local spriteX = innerX + int((innerW - spriteWidth) / 2)
+			for i, row in ipairs(sprite) do
+				local y = spriteY + i - 1
+				if (y >= spriteTop) and (y <= spriteBottom) then
+					renderSpriteRow(spriteX, y, row, palette, DEFAULT_SPRITE_PIXEL_WIDTH)
+				end
 			end
 		end
 		SetNormal()

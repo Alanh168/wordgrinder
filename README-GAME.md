@@ -16,7 +16,9 @@ Every character has currently equipped armor, weapons, and obtained monsters (al
 ### Map
 Where the character is on the map is project-dependent (as opposed to Characters, Equipment, Monsters, and Quests which exist independent of what proejct you're on). The map is called Writer Region and it has 7 locations:
     1. Idea Town
+        - Where the player starts. They have to submit a "nugget" of an idea to the Trainer there. The trainer takes the nugget (and the program stores it in a log file). They say "A worthy nugget, indeed"
     2. Brainstorm Valley
+        
     3. 1st Draft City
     4. Self-Revision Cave
     5. Workshop Town
@@ -33,4 +35,4 @@ Quests: The user can take on quests on the Quest Screen. On the Quest Screen the
     2. Available to Select Quests
     3. Completed Quests
 
-Quests are the way that 
+Quests are the way that a user can know what monsters to fight. Without them, the user might get stuck fighting the monsters that are "comfortable" rather than monsters whose word counts and time limits might be better suited for the part of the draft writing process they are on.

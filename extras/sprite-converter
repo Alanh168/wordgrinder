@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run from repository root, no matter current directory.
+cd "$(dirname "$0")/.."
+
+if [[ $# -eq 0 ]]; then
+  set -- \
+    --input-dir extras/sprites/pixel32 \
+    --output extras/sprites/formatted_sprites.lua
+fi
+
+python3 extras/sprite_converter.py "$@"
+
+# Install for runtime loading regardless current working directory.
+if [[ -f extras/sprites/formatted_sprites.lua ]]; then
+  install_dir="${HOME:-}/.wordgrinder"
+  if [[ -n "${HOME:-}" ]]; then
+    if mkdir -p "$install_dir" && cp extras/sprites/formatted_sprites.lua "$install_dir/formatted_sprites.lua"; then
+      echo "Installed sprite table -> $install_dir/formatted_sprites.lua"
+    else
+      echo "Warning: could not install sprite table to $install_dir/formatted_sprites.lua" >&2
+    fi
+  fi
+fi

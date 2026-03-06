@@ -1,267 +1,268 @@
 #!/usr/bin/env python3
 """
-Sprite Converter for WordGrinder Statistics Addon
+Batch convert PNG sprites into a Lua palette table.
 
-Converts a small PNG/image file into Lua sprite table data using Unicode
-block characters for terminal rendering.
+Input:
+  - Reads every *.png in extras/sprites (or --input-dir)
 
-Two output modes:
-  1. "full" — 1 pixel = 1 character cell, with shade encoding (# D M L .)
-  2. "half" — 2 vertical pixels per character cell using half-block chars
-             (▀ ▄ █ and space), effectively halving sprite height
+Output:
+  - Writes one Lua file (default extras/sprites/formatted_sprites.lua)
+  - Structure:
+      return {
+        agumon = {
+          sprite = { {0,1,1,...}, ... },
+          color_palette = { [1] = 208, [2] = 130, ... }
+        },
+      }
 
-Usage:
-  python3 sprite_converter.py <image> [--mode full|half] [--threshold N]
-                                       [--width W] [--invert]
-
-The image should be a small grayscale or color PNG. Bright pixels become
-filled blocks; dark pixels become empty. Use --invert if your source image
-has a dark subject on a light background.
-
-Output is printed as a Lua table you can paste into statistics.lua.
+Notes:
+  - 0 in sprite rows means transparent.
+  - Palette values are xterm-256 color indices.
+  - When resizing, Image.NEAREST is used to preserve pixel edges.
 """
 
+from __future__ import annotations
+
 import argparse
+import re
 import sys
+from pathlib import Path
+from typing import Dict, List, Sequence, Tuple
+
 from PIL import Image
 
 
-# Shade levels for full mode (darkest to brightest terminal character)
-# Maps a 0.0–1.0 brightness value to an encoding character
-SHADE_CHARS_FULL = [
-    (0.00, "."),   # empty / transparent
-    (0.15, "L"),   # ░ light shade
-    (0.35, "M"),   # ▒ medium shade
-    (0.60, "D"),   # ▓ dark shade
-    (1.00, "#"),   # █ full block
-]
-
-# For half-block mode, we need the actual Unicode characters
-HALF_TOP = "▀"
-HALF_BOT = "▄"
-FULL_BLK = "█"
-EMPTY = " "
+Rgb = Tuple[int, int, int]
 
 
-def load_and_resize(path, target_width=None):
-    """Load image, convert to grayscale, optionally resize."""
-    img = Image.open(path).convert("L")  # grayscale
-    if target_width and target_width != img.width:
-        ratio = target_width / img.width
-        target_height = max(1, int(img.height * ratio))
-        img = img.resize((target_width, target_height), Image.LANCZOS)
-    return img
+def build_xterm_palette() -> List[Rgb]:
+    # Standard xterm 0-15 colors.
+    base16: List[Rgb] = [
+        (0, 0, 0),         # 0
+        (128, 0, 0),       # 1
+        (0, 128, 0),       # 2
+        (128, 128, 0),     # 3
+        (0, 0, 128),       # 4
+        (128, 0, 128),     # 5
+        (0, 128, 128),     # 6
+        (192, 192, 192),   # 7
+        (128, 128, 128),   # 8
+        (255, 0, 0),       # 9
+        (0, 255, 0),       # 10
+        (255, 255, 0),     # 11
+        (0, 0, 255),       # 12
+        (255, 0, 255),     # 13
+        (0, 255, 255),     # 14
+        (255, 255, 255),   # 15
+    ]
+
+    palette: List[Rgb] = list(base16)
+
+    # 16-231: 6x6x6 cube.
+    levels = [0, 95, 135, 175, 215, 255]
+    for r in levels:
+        for g in levels:
+            for b in levels:
+                palette.append((r, g, b))
+
+    # 232-255: grayscale ramp.
+    for i in range(24):
+        v = 8 + i * 10
+        palette.append((v, v, v))
+
+    return palette
 
 
-def brightness_at(img, x, y):
-    """Get brightness 0.0 (black) to 1.0 (white) at pixel x,y."""
-    if y >= img.height or x >= img.width:
-        return 0.0
-    return img.getpixel((x, y)) / 255.0
+XTERM_PALETTE = build_xterm_palette()
 
 
-def to_shade_char(brightness):
-    """Convert brightness to shade encoding character."""
-    char = "."
-    for threshold, c in SHADE_CHARS_FULL:
-        if brightness >= threshold:
-            char = c
-    return char
+def nearest_xterm_index(rgb: Rgb) -> int:
+    r, g, b = rgb
+    best_i = 0
+    best_d = None
+    for i, (pr, pg, pb) in enumerate(XTERM_PALETTE):
+        d = (r - pr) * (r - pr) + (g - pg) * (g - pg) + (b - pb) * (b - pb)
+        if (best_d is None) or (d < best_d):
+            best_d = d
+            best_i = i
+    return best_i
 
 
-def convert_full(img, invert=False):
-    """Full mode: 1 pixel = 1 character cell with shade encoding."""
-    rows = []
-    for y in range(img.height):
-        row = ""
-        for x in range(img.width):
-            b = brightness_at(img, x, y)
-            if invert:
-                b = 1.0 - b
-            row += to_shade_char(b)
+def sanitize_name(name: str) -> str:
+    n = name.lower()
+    n = re.sub(r"[^a-z0-9]+", "_", n).strip("_")
+    if not n:
+        n = "sprite"
+    if n[0].isdigit():
+        n = "_" + n
+    return n
+
+
+def resize_image(
+    img: Image.Image,
+    width: int | None,
+    height: int | None,
+) -> Image.Image:
+    if width is None and height is None:
+        return img
+
+    src_w, src_h = img.size
+
+    if width is not None and height is not None:
+        target = (max(1, width), max(1, height))
+    elif width is not None:
+        ratio = width / src_w
+        target = (max(1, width), max(1, int(round(src_h * ratio))))
+    else:
+        ratio = height / src_h
+        target = (max(1, int(round(src_w * ratio))), max(1, height))
+
+    return img.resize(target, Image.NEAREST)
+
+
+def convert_image(
+    path: Path,
+    width: int | None,
+    height: int | None,
+    alpha_threshold: int,
+) -> Tuple[List[List[int]], List[int], int, int]:
+    img = Image.open(path).convert("RGBA")
+    img = resize_image(img, width, height)
+    w, h = img.size
+
+    slot_by_xterm: Dict[int, int] = {}
+    palette: List[int] = []
+    rows: List[List[int]] = []
+
+    for y in range(h):
+        row: List[int] = []
+        for x in range(w):
+            r, g, b, a = img.getpixel((x, y))
+            if a <= alpha_threshold:
+                row.append(0)
+                continue
+
+            xterm_index = nearest_xterm_index((r, g, b))
+            slot = slot_by_xterm.get(xterm_index)
+            if slot is None:
+                slot = len(palette) + 1
+                slot_by_xterm[xterm_index] = slot
+                palette.append(xterm_index)
+            row.append(slot)
         rows.append(row)
-    return rows
+
+    return rows, palette, w, h
 
 
-def convert_half(img, invert=False):
-    """Half-block mode: 2 vertical pixels per character cell.
-
-    Each output row encodes two image rows. Uses ▀ ▄ █ and space.
-    Since this is monochrome (green on black), we only need to know
-    which halves are "on" (above threshold).
-
-    For shade awareness, we use a threshold: brightness >= 0.25 = on.
-    """
-    threshold = 0.25
-    rows = []
-    # Process image rows in pairs
-    for y in range(0, img.height, 2):
-        row = ""
-        for x in range(img.width):
-            b_top = brightness_at(img, x, y)
-            b_bot = brightness_at(img, x, y + 1) if y + 1 < img.height else 0.0
-            if invert:
-                b_top = 1.0 - b_top
-                b_bot = 1.0 - b_bot
-            top_on = b_top >= threshold
-            bot_on = b_bot >= threshold
-            if top_on and bot_on:
-                row += FULL_BLK
-            elif top_on and not bot_on:
-                row += HALF_TOP
-            elif not top_on and bot_on:
-                row += HALF_BOT
-            else:
-                row += EMPTY
-        rows.append(row)
-    return rows
-
-
-def convert_half_shaded(img, invert=False):
-    """Half-block mode with shade levels.
-
-    Instead of binary on/off, we pick from multiple shade characters
-    based on the average brightness of the two pixels in a cell.
-    This gives better visual fidelity than pure half-blocks.
-
-    When both pixels are similar brightness → use a shade char for full cell.
-    When they differ significantly → use half-block chars.
-    """
-    threshold = 0.20
-    rows = []
-    for y in range(0, img.height, 2):
-        row = ""
-        for x in range(img.width):
-            b_top = brightness_at(img, x, y)
-            b_bot = brightness_at(img, x, y + 1) if y + 1 < img.height else 0.0
-            if invert:
-                b_top = 1.0 - b_top
-                b_bot = 1.0 - b_bot
-            top_on = b_top >= threshold
-            bot_on = b_bot >= threshold
-            if top_on and bot_on:
-                # Both on — use shade character based on average brightness
-                avg = (b_top + b_bot) / 2.0
-                row += to_shade_char(avg)
-            elif top_on and not bot_on:
-                row += HALF_TOP
-            elif not top_on and bot_on:
-                row += HALF_BOT
-            else:
-                row += " "
-        rows.append(row)
-    return rows
-
-
-def trim_transparent(rows, empty_char=None):
-    """Remove leading/trailing empty columns and rows."""
-    if not rows:
-        return rows
-
-    # Determine which characters count as empty
-    empty_chars = {" ", "."}
-
-    # Trim empty rows from top and bottom
-    while rows and all(c in empty_chars for c in rows[0]):
-        rows = rows[1:]
-    while rows and all(c in empty_chars for c in rows[-1]):
-        rows = rows[:-1]
-
-    if not rows:
-        return rows
-
-    # Find leftmost and rightmost non-empty columns
-    min_col = min(
-        next((i for i, c in enumerate(row) if c not in empty_chars), len(row))
-        for row in rows
-    )
-    max_col = max(
-        next((i for i, c in enumerate(reversed(row)) if c not in empty_chars), len(row))
-        for row in rows
-    )
-    max_col = max(len(row) for row in rows) - max_col
-
-    # Trim columns
-    rows = [row[min_col:max_col] for row in rows]
-    return rows
-
-
-def format_lua_sprite(rows, threshold=0, indent="\t\t"):
-    """Format rows as a Lua sprite table entry."""
-    lines = []
-    lines.append(f"{indent[:-1]}" + "{")
-    lines.append(f"{indent}threshold = {threshold},")
-    lines.append(f"{indent}sprite = " + "{")
+def format_sprite_rows(rows: Sequence[Sequence[int]], indent: str) -> List[str]:
+    out = [f"{indent}sprite = {{"]
     for row in rows:
-        lines.append(f'{indent}\t"{row}",')
-    lines.append(f"{indent}" + "},")
-    lines.append(f"{indent[:-1]}" + "},")
-    return "\n".join(lines)
+        line = ", ".join(str(v) for v in row)
+        out.append(f"{indent}  {{{line}}},")
+    out.append(f"{indent}}},")
+    return out
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Convert images to WordGrinder terminal sprites"
-    )
-    parser.add_argument("image", help="Input image file (PNG, etc.)")
+def format_palette(palette: Sequence[int], indent: str) -> List[str]:
+    out = [f"{indent}color_palette = {{"]
+    for slot, color_index in enumerate(palette, start=1):
+        out.append(f"{indent}  [{slot}] = {color_index},")
+    out.append(f"{indent}}},")
+    return out
+
+
+def write_lua_output(
+    output: Path,
+    converted: List[Tuple[str, str, List[List[int]], List[int], int, int]],
+) -> None:
+    lines: List[str] = []
+    lines.append("-- Auto-generated by extras/sprite_converter.py")
+    lines.append("-- Do not edit manually; re-run the converter.")
+    lines.append("return {")
+
+    for key, source_name, rows, palette, w, h in converted:
+        lines.append(f"  {key} = {{")
+        lines.append(f'    source = "{source_name}",')
+        lines.append(f"    width = {w},")
+        lines.append(f"    height = {h},")
+        lines.extend(format_sprite_rows(rows, "    "))
+        lines.extend(format_palette(palette, "    "))
+        lines.append("  },")
+
+    lines.append("}")
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def find_pngs(input_dir: Path) -> List[Path]:
+    files = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png"]
+    files.sort(key=lambda p: p.name.lower())
+    return files
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Batch convert PNG sprites to Lua palette tables")
     parser.add_argument(
-        "--mode",
-        choices=["full", "half", "half-shaded"],
-        default="full",
-        help="Output mode: full (1:1), half (2 vert pixels/cell), "
-             "half-shaded (half-block with shade levels)",
+        "--input-dir",
+        default="extras/sprites",
+        help="Directory containing PNG files (default: extras/sprites)",
     )
     parser.add_argument(
-        "--threshold",
-        type=int,
-        default=0,
-        help="Word count threshold for this evolution stage",
+        "--output",
+        default="extras/sprites/formatted_sprites.lua",
+        help="Output Lua file (default: extras/sprites/formatted_sprites.lua)",
     )
     parser.add_argument(
         "--width",
         type=int,
         default=None,
-        help="Target width in characters (resizes image proportionally)",
+        help="Resize to width (nearest-neighbor). Keeps aspect unless --height is also set.",
     )
     parser.add_argument(
-        "--invert",
-        action="store_true",
-        help="Invert brightness (use if subject is dark on light background)",
+        "--height",
+        type=int,
+        default=None,
+        help="Resize to height (nearest-neighbor). Keeps aspect unless --width is also set.",
     )
     parser.add_argument(
-        "--trim",
-        action="store_true",
-        default=True,
-        help="Trim transparent/empty borders (default: true)",
-    )
-    parser.add_argument(
-        "--no-trim",
-        action="store_true",
-        help="Don't trim transparent/empty borders",
+        "--alpha-threshold",
+        type=int,
+        default=0,
+        help="Pixels with alpha <= threshold become transparent (default: 0)",
     )
 
     args = parser.parse_args()
 
-    img = load_and_resize(args.image, args.width)
-    print(f"-- Source: {args.image} ({img.width}x{img.height}px)", file=sys.stderr)
-    print(f"-- Mode: {args.mode}", file=sys.stderr)
+    input_dir = Path(args.input_dir)
+    output = Path(args.output)
 
-    if args.mode == "full":
-        rows = convert_full(img, args.invert)
-    elif args.mode == "half":
-        rows = convert_half(img, args.invert)
-    elif args.mode == "half-shaded":
-        rows = convert_half_shaded(img, args.invert)
+    if not input_dir.exists() or not input_dir.is_dir():
+        print(f"Input directory does not exist: {input_dir}", file=sys.stderr)
+        return 1
 
-    if args.trim and not args.no_trim:
-        rows = trim_transparent(rows)
+    pngs = find_pngs(input_dir)
+    if not pngs:
+        print(f"No PNG files found in {input_dir}", file=sys.stderr)
+        return 1
 
-    out_height = len(rows)
-    out_width = max(len(r) for r in rows) if rows else 0
-    print(f"-- Output: {out_width}x{out_height} characters", file=sys.stderr)
+    converted: List[Tuple[str, str, List[List[int]], List[int], int, int]] = []
+    seen_keys = set()
+    for path in pngs:
+        key = sanitize_name(path.stem)
+        base = key
+        n = 2
+        while key in seen_keys:
+            key = f"{base}_{n}"
+            n += 1
+        seen_keys.add(key)
 
-    print(format_lua_sprite(rows, args.threshold))
+        rows, palette, w, h = convert_image(path, args.width, args.height, args.alpha_threshold)
+        converted.append((key, path.name, rows, palette, w, h))
+        print(f"{path.name}: {w}x{h}, {len(palette)} palette entries -> key '{key}'")
+
+    write_lua_output(output, converted)
+    print(f"Wrote {output} ({len(converted)} sprites)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
