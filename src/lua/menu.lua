@@ -314,10 +314,17 @@ end
 
 MenuClass = {
 	activate = function(self, menu)
-		menu = menu or MainMenu
-		self:runmenu(0, 0, menu)
-		QueueRedraw()
-		SetNormal()
+		local runner = rawget(_G, "RunWithMonsterBarHidden")
+		local function run_menu()
+			menu = menu or MainMenu
+			self:runmenu(0, 0, menu)
+			QueueRedraw()
+			SetNormal()
+		end
+		if type(runner) == "function" then
+			return runner(run_menu)
+		end
+		return run_menu()
 	end,
 
 	drawmenu = function(self, x, y, menu, n, top)

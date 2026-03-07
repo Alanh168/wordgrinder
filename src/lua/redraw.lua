@@ -23,6 +23,7 @@ local BLINK_TIME = 0.8
 local messages = {}
 local leftpadding = 0
 local monsterBarHeight = 0
+local monsterBarHiddenDepth = 0
 
 function NonmodalMessage(s)
 	messages[#messages+1] = s
@@ -149,7 +150,50 @@ local function clearSpriteOverlay()
 	io.flush()
 end
 
+local function isMonsterBarVisible()
+	return monsterBarHiddenDepth == 0
+end
+
+function IsMonsterBarVisible()
+	return isMonsterBarVisible()
+end
+
+function PushMonsterBarHidden()
+	monsterBarHiddenDepth = monsterBarHiddenDepth + 1
+	monsterBarHeight = 0
+	clearSpriteOverlay()
+end
+
+function PopMonsterBarHidden()
+	if monsterBarHiddenDepth > 0 then
+		monsterBarHiddenDepth = monsterBarHiddenDepth - 1
+	end
+	if monsterBarHiddenDepth > 0 then
+		monsterBarHeight = 0
+		clearSpriteOverlay()
+	end
+end
+
+function RunWithMonsterBarHidden(callback, ...)
+	local args = {...}
+	PushMonsterBarHidden()
+	local results = {xpcall(function()
+		return callback(unpack(args))
+	end, Traceback)}
+	PopMonsterBarHidden()
+	if not results[1] then
+		error(results[2])
+	end
+	return unpack(results, 2)
+end
+
 local function redrawmonsterbar()
+	if not isMonsterBarVisible() then
+		monsterBarHeight = 0
+		clearSpriteOverlay()
+		return
+	end
+
 	local isActive = rawget(_G, "IsMonsterQueueActive")
 	if not isActive or not isActive() then
 		monsterBarHeight = 0
@@ -204,8 +248,7 @@ local function redrawmonsterbar()
 	RAlignInField(0, 0, ScreenWidth - spriteReserved, barText)
 
 	-- Emit OSC 99 to render the monster sprite via the Image Overlay.
-	-- Sprite goes at the far right edge, just after the stats text.
-	-- Target height: 1.5 cells (slightly taller than text, centered on row).
+	-- Each command replaces the entire overlay model (no clear needed).
 	-- Sprite is right-anchored to spriteX by CRT's ImageOverlay.
 	if spriteReserved > 0 then
 		emitSpriteCommand(monster.sprite_ref, ScreenWidth, 0, 1.5)
@@ -258,7 +301,7 @@ function RedrawScreen()
 	-- Determine top offset for monster bar
 	local topOffset = 0
 	local isQueueActive = rawget(_G, "IsMonsterQueueActive")
-	if isQueueActive and isQueueActive() then
+	if isMonsterBarVisible() and isQueueActive and isQueueActive() then
 		topOffset = 1
 	end
 
