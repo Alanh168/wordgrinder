@@ -522,7 +522,7 @@ local function drawListView(entries, page, selected)
 	local contentTop = 2
 	local contentBottom = sh - 4
 	local contentH = max(1, contentBottom - contentTop)
-	local slotH = max(5, int(contentH / max(1, itemsOnPage)))
+	local slotH = max(5, int(contentH / SPRITES_PER_PAGE))
 	local innerX = 2
 	local innerW = sw - 5
 	local previewW = min(36, max(16, int(innerW * 0.40))) - 2
