@@ -137,14 +137,29 @@ local function redrawstatus()
 end
 
 -- Emit an OSC 99 sprite command to Cool Retro Term's Image Overlay.
--- Format: \027]99;sprite_id;cell_x;cell_y;target_cell_height\007
+-- Format: \027]99;sprite_id;cell_x;cell_y;target_cell_height[;target_cell_width;anchor]\007
 -- cell_x/cell_y may be fractional for more precise placement.
 -- target_cell_height: how many cells tall the sprite should be (can be fractional).
+-- target_cell_width/anchor are optional and allow fit-within-box centering.
 -- CRT calculates the actual pixel scale from this and the image's native size.
 -- Clear: \027]99;clear\007
-local function emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight)
-	io.write(string.format("\027]99;%s;%.2f;%.2f;%.2f\007",
-		spriteId, cellX, cellY, targetCellHeight))
+local function emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight, targetCellWidth, anchor)
+	local command = string.format("%s;%.2f;%.2f;%.2f",
+		spriteId, cellX, cellY, targetCellHeight)
+
+	if (type(targetCellWidth) == "number") or (type(anchor) == "string") then
+		local widthField = ""
+		if type(targetCellWidth) == "number" and targetCellWidth > 0 then
+			widthField = string.format("%.2f", targetCellWidth)
+		end
+
+		command = command .. ";" .. widthField
+		if type(anchor) == "string" and anchor ~= "" then
+			command = command .. ";" .. anchor
+		end
+	end
+
+	io.write("\027]99;" .. command .. "\007")
 	io.flush()
 end
 
@@ -163,12 +178,25 @@ local function replaceSpriteOverlay(sprites)
 			local cellX = sprite and sprite.cellX
 			local cellY = sprite and sprite.cellY
 			local targetCellHeight = sprite and sprite.targetCellHeight
+			local targetCellWidth = sprite and sprite.targetCellWidth
+			local anchor = sprite and sprite.anchor
 			if type(spriteId) == "string"
 				and type(cellX) == "number"
 				and type(cellY) == "number"
 				and type(targetCellHeight) == "number" then
-				encoded[#encoded + 1] = string.format("%s,%.2f,%.2f,%.2f",
+				local entry = string.format("%s,%.2f,%.2f,%.2f",
 					spriteId, cellX, cellY, targetCellHeight)
+				if (type(targetCellWidth) == "number") or (type(anchor) == "string") then
+					local widthField = ""
+					if type(targetCellWidth) == "number" and targetCellWidth > 0 then
+						widthField = string.format("%.2f", targetCellWidth)
+					end
+					entry = entry .. "," .. widthField .. ","
+					if type(anchor) == "string" and anchor ~= "" then
+						entry = entry .. anchor
+					end
+				end
+				encoded[#encoded + 1] = entry
 			end
 		end
 	end
@@ -178,8 +206,8 @@ local function replaceSpriteOverlay(sprites)
 	io.flush()
 end
 
-function EmitSpriteOverlay(spriteId, cellX, cellY, targetCellHeight)
-	emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight)
+function EmitSpriteOverlay(spriteId, cellX, cellY, targetCellHeight, targetCellWidth, anchor)
+	emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight, targetCellWidth, anchor)
 end
 
 function ClearSpriteOverlay()

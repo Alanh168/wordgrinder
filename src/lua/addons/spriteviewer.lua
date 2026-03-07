@@ -19,12 +19,16 @@ local SetDim = wg.setdim
 local SPRITES_PER_PAGE = 4
 
 local PAGE_DEFINITIONS = {
-	{ label = "Original", rel_dir = "candidates" },
+	{ label = "Full Size", rel_dir = "candidates" },
 	{ label = "64x64", rel_dir = "generated/64x64" },
 	{ label = "32x32", rel_dir = "generated/32x32" },
 	{ label = "16x16", rel_dir = "generated/16x16" },
 	{ label = "8x8", rel_dir = "generated/8x8" },
 }
+
+local STATUS_ICON_TARGET_CELL_HEIGHT = 1.5
+local STATUS_BOX_WIDTH = 10
+local STATUS_BOX_HEIGHT = 2
 
 local function pathJoin(a, b)
 	if a:sub(-1) == "/" then
@@ -234,28 +238,36 @@ local function clearOverlay()
 	end
 end
 
-local function buildOverlaySprite(version, boxX, boxY, boxW, boxH)
+local function buildOverlaySprite(version, boxX, boxY, boxW, boxH, centerOffsetX)
 	if not version or not version.exists then
 		return nil
 	end
 
-	local imgW = version.width or 0
-	local imgH = version.height or 0
-	if imgW < 1 or imgH < 1 or boxW < 1 or boxH < 1 then
+	if boxW < 1 or boxH < 1 then
 		return nil
 	end
 
-	local targetH = min(boxH, (boxW * imgH) / imgW)
-	if targetH <= 0 then
-		return nil
-	end
-
-	local drawW = imgW * (targetH / imgH)
 	return {
 		spriteId = version.sprite_id,
-		cellX = boxX + (boxW + drawW) / 2,
+		cellX = boxX + (boxW / 2) + (centerOffsetX or 0),
 		cellY = boxY + (boxH - 1) / 2,
-		targetCellHeight = targetH,
+		targetCellHeight = boxH,
+		targetCellWidth = boxW,
+		anchor = "center",
+	}
+end
+
+local function buildStatusOverlaySprite(version, boxX, boxY, boxW, boxH)
+	if not version or not version.exists then
+		return nil
+	end
+
+	return {
+		spriteId = version.sprite_id,
+		cellX = boxX + (boxW / 2),
+		cellY = boxY + (boxH - 1) / 2,
+		targetCellHeight = STATUS_ICON_TARGET_CELL_HEIGHT,
+		anchor = "center",
 	}
 end
 
@@ -272,7 +284,8 @@ local function replaceOverlaySprites(sprites)
 	end
 
 	for _, sprite in ipairs(sprites or {}) do
-		emitter(sprite.spriteId, sprite.cellX, sprite.cellY, sprite.targetCellHeight)
+		emitter(sprite.spriteId, sprite.cellX, sprite.cellY, sprite.targetCellHeight,
+			sprite.targetCellWidth, sprite.anchor)
 	end
 end
 
@@ -283,12 +296,7 @@ local function drawSlotSeparator(x, y, w)
 end
 
 local function drawSelectionBox(x, y, w, h, title, isSelected)
-	local left = isSelected and "╔" or "┌"
-	local right = isSelected and "╗" or "┐"
-	local bottomLeft = isSelected and "╚" or "└"
-	local bottomRight = isSelected and "╝" or "┘"
 	local horizontal = string_rep(isSelected and "═" or "─", w)
-	local vertical = isSelected and "║" or "│"
 	local space = string_rep(" ", w)
 
 	if isSelected then
@@ -297,16 +305,10 @@ local function drawSelectionBox(x, y, w, h, title, isSelected)
 		SetNormal()
 	end
 
-	Write(x - 1, y, " " .. left)
-	Write(x + w + 1, y, right .. " ")
-	Write(x - 1, y + h + 1, " " .. bottomLeft)
-	Write(x + w + 1, y + h + 1, bottomRight .. " ")
 	Write(x + 1, y, horizontal)
 	Write(x + 1, y + h + 1, horizontal)
 
 	for row = y + 1, y + h do
-		Write(x - 1, row, " " .. vertical)
-		Write(x + w + 1, row, vertical .. " ")
 		Write(x + 1, row, space)
 	end
 
@@ -324,29 +326,26 @@ local function drawListSlot(x, y, w, h, entry, isSelected)
 
 	if isSelected then
 		SetBright()
-		Write(x - 1, y, ">")
+		Write(x - 1, y + 2, ">")
 	else
 		SetNormal()
 		Write(x - 1, y, " ")
 	end
 
-	drawSelectionBox(x, y, previewW - 2, h - 2, " Sprite ", isSelected)
+	drawSelectionBox(x, y, previewW - 2, h - 2, " " .. GetBoundedString(entry.name, infoW) .. " ", isSelected)
 
 	if isSelected then
 		SetBright()
 	else
 		SetNormal()
 	end
-	Write(infoX, y, GetBoundedString(entry.name, infoW))
 
 	SetNormal()
-	Write(infoX, y + 1, GetBoundedString(entry.filename, infoW))
-
 	local pageBits = {}
 	for _, version in ipairs(entry.versions) do
 		pageBits[#pageBits + 1] = version.exists and version.label or "-"
 	end
-	local pagesText = "Pages: " .. table.concat(pageBits, "  ")
+	local pagesText = "Resolutions: " .. table.concat(pageBits, "  ")
 	Write(infoX, y + 2, GetBoundedString(pagesText, infoW))
 
 	if isSelected then
@@ -395,18 +394,27 @@ local function getListPreviewBoxSize(sw, sh)
 	local contentBottom = sh - 4
 	local contentH = contentBottom - contentTop
 	local slotH = max(4, int(contentH / SPRITES_PER_PAGE))
-	local innerW = sw - 4
-	local previewW = min(36, max(16, int(innerW * 0.40))) - 2
-	return max(14, previewW), max(4, slotH - 2)
+	local previewH = max(4, slotH - 2)
+	local previewW = min(24, max(14, previewH * 2))
+	return previewW, previewH
 end
 
-local function findVersion(entry, label)
-	for _, version in ipairs(entry.versions) do
-		if version.label == label then
-			return version
-		end
+local function drawPreviewBox(x, y, w, h, title)
+	local horizontal = string_rep("─", w)
+	local space = string_rep(" ", w)
+
+	SetBright()
+	Write(x + 1, y, horizontal)
+	Write(x + 1, y + h + 1, horizontal)
+
+	for row = y + 1, y + h do
+		Write(x + 1, row, space)
 	end
-	return nil
+
+	if title then
+		CentreInField(x + 1, y, w, title)
+	end
+	SetNormal()
 end
 
 local function drawDetailView(entry, versionIndex)
@@ -416,16 +424,16 @@ local function drawDetailView(entry, versionIndex)
 	local sw, sh = ScreenWidth, ScreenHeight
 	local hborder = string_rep("─", sw)
 	local currentVersion = entry.versions[versionIndex]
-	local statusVersion = findVersion(entry, "8x8") or currentVersion
+	local statusVersion = currentVersion
 
-	local statusW = min(16, max(12, int(sw * 0.18)))
-	local statusH = 4
+	local statusW = STATUS_BOX_WIDTH
+	local statusH = STATUS_BOX_HEIGHT
 	local statusX = sw - statusW - 3
 	local statusY = 2
 
 	local leftW, leftH = getBattlePreviewBoxSize(sw, sh)
 	local rightW, rightH = getListPreviewBoxSize(sw, sh)
-	local sideTop = 6
+	local sideTop = 5
 	local sideBottom = sh - 5
 	local leftX = 2
 	local leftY = sideTop + max(0, int((sideBottom - sideTop - leftH) / 2))
@@ -452,22 +460,21 @@ local function drawDetailView(entry, versionIndex)
 
 	CentreInField(0, 2, sw,
 		string_format("Version %d/%d: %s", versionIndex, #entry.versions, currentVersion.label))
-	CentreInField(0, 3, sw, entry.filename)
 
-	DrawTitledBox(statusX, statusY, statusW, statusH, "Status")
-	DrawTitledBox(leftX, leftY, leftW, leftH, "Battle Box")
-	DrawTitledBox(centerX, centerY, centerW, centerH, currentVersion.label)
-	DrawTitledBox(rightX, rightY, rightW, rightH, "List Slot")
+	drawPreviewBox(statusX, statusY, statusW, statusH, "Status")
+	drawPreviewBox(leftX, leftY, leftW, leftH, "Battle Select")
+	drawPreviewBox(centerX, centerY, centerW, centerH, currentVersion.label)
+	drawPreviewBox(rightX, rightY, rightW, rightH, "List Preview")
 
 	local overlaySprites = {}
 
-	local statusSprite = buildOverlaySprite(statusVersion, statusX + 1, statusY + 1, statusW, statusH)
+	local statusSprite = buildStatusOverlaySprite(statusVersion, statusX + 1, statusY + 1, statusW, statusH)
 	local statusRendered = statusSprite ~= nil
 	if statusSprite then
 		overlaySprites[#overlaySprites + 1] = statusSprite
 	end
 	if not statusRendered then
-		drawMissingMessage(statusX, statusY, statusW, statusH, "[ missing 8x8 ]")
+		drawMissingMessage(statusX, statusY, statusW, statusH, "[ missing page image ]")
 	end
 
 	local leftSprite = buildOverlaySprite(currentVersion, leftX + 1, leftY + 1, leftW, leftH)
@@ -488,7 +495,7 @@ local function drawDetailView(entry, versionIndex)
 		drawMissingMessage(centerX, centerY, centerW, centerH, "[ missing page image ]")
 	end
 
-	local rightSprite = buildOverlaySprite(currentVersion, rightX + 1, rightY + 1, rightW, rightH)
+	local rightSprite = buildOverlaySprite(currentVersion, rightX + 1, rightY + 1, rightW, rightH, 0.5)
 	local rightRendered = rightSprite ~= nil
 	if rightSprite then
 		overlaySprites[#overlaySprites + 1] = rightSprite
