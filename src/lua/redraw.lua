@@ -164,6 +164,9 @@ local function emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight, targe
 end
 
 local function clearSpriteOverlay()
+	-- Keep frame generations ahead of any menu/screen-entry clear commands so
+	-- the first ReplaceSpriteOverlay() call on a new screen is not treated as stale.
+	spriteOverlayFrameId = spriteOverlayFrameId + 1
 	io.write("\027]99;clear\007")
 	io.flush()
 end

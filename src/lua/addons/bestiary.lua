@@ -35,6 +35,56 @@ local function getSpriteUtils()
 	return rawget(_G, "GlobalSpriteUtils")
 end
 
+local function getOverlayFns()
+	return rawget(_G, "EmitSpriteOverlay"),
+		rawget(_G, "ClearSpriteOverlay"),
+		rawget(_G, "ReplaceSpriteOverlay")
+end
+
+local function clearOverlay()
+	local _, clearer = getOverlayFns()
+	if type(clearer) == "function" then
+		clearer()
+	end
+end
+
+local function replaceOverlaySprites(sprites)
+	local emitter, _, replacer = getOverlayFns()
+	if type(replacer) == "function" then
+		replacer(sprites)
+		return
+	end
+
+	clearOverlay()
+	if type(emitter) ~= "function" then
+		return
+	end
+
+	for _, sprite in ipairs(sprites or {}) do
+		emitter(sprite.spriteId, sprite.cellX, sprite.cellY, sprite.targetCellHeight,
+			sprite.targetCellWidth, sprite.anchor)
+	end
+end
+
+local function buildMonsterOverlaySprite(monster, boxX, boxY, boxW, boxH)
+	if not monster or not monster.sprite_ref or monster.sprite_ref == "" then
+		return nil
+	end
+
+	if boxW < 1 or boxH < 1 then
+		return nil
+	end
+
+	return {
+		spriteId = monster.sprite_ref,
+		cellX = boxX + (boxW / 2),
+		cellY = boxY + (boxH - 1) / 2,
+		targetCellHeight = boxH,
+		targetCellWidth = boxW,
+		anchor = "center",
+	}
+end
+
 local function formatTimeLimitString(minutes)
 	local formatter = rawget(_G, "FormatMonsterTimeLimit")
 	if type(formatter) == "function" then
@@ -54,7 +104,7 @@ local function formatTimeLimitString(minutes)
 	return string_format("%dm", minutes)
 end
 
-local function drawMonsterSlot(x, y, w, h, monster, isSelected, spriteUtils)
+local function drawMonsterSlot(x, y, w, h, monster, isSelected, overlaySprites)
 	-- Draw selection indicator
 	if isSelected then
 		SetBright()
@@ -88,27 +138,9 @@ local function drawMonsterSlot(x, y, w, h, monster, isSelected, spriteUtils)
 	local tlStr = string_format("Time: %s", formatTimeLimitString(monster.target_time_limit_minutes))
 	Write(infoX, y + 2, GetBoundedString(tlStr, infoW))
 
-	-- Draw sprite (small) using full-block rendering
-	if spriteUtils and monster.sprite_ref and monster.sprite_ref ~= "" then
-		local termRows = max(1, h - 1)
-		local resampleMode = spriteUtils.RESAMPLE_NEAREST or "nearest"
-		local getSprite = spriteUtils.getSpriteByKeyMultiRes or spriteUtils.getSpriteByKey
-		local sprite, palette = getSprite(
-			monster.sprite_ref, "_md",
-			spriteAreaW,
-			termRows,
-			BESTIARY_SMALL_PIXEL_WIDTH,
-			0,
-			resampleMode)
-		if sprite and palette then
-			local spriteW = spriteUtils.getSpriteSize(sprite, BESTIARY_SMALL_PIXEL_WIDTH)
-			local drawX = x + 2 + int((spriteAreaW - spriteW) / 2)
-			local drawY = y + int((h - #sprite) / 2)
-			for row = 1, #sprite do
-				spriteUtils.renderSpriteRow(drawX, drawY + row - 1, sprite[row], palette, BESTIARY_SMALL_PIXEL_WIDTH)
-			end
-			SetNormal()
-		end
+	local sprite = buildMonsterOverlaySprite(monster, x + 2, y, spriteAreaW, h)
+	if sprite then
+		overlaySprites[#overlaySprites + 1] = sprite
 	end
 
 	-- Draw separator line below (unless at bottom)
@@ -120,6 +152,7 @@ end
 local function drawDetailView(monster, spriteUtils)
 	ResizeScreen()
 	wg.clearscreen()
+	clearOverlay()
 
 	local sw, sh = ScreenWidth, ScreenHeight
 	local hborder = string_rep("─", sw)
@@ -175,117 +208,129 @@ local function drawDetailView(monster, spriteUtils)
 end
 
 function Cmd.BestiaryUI()
-	local allMonsters = getMonsterBestiary()
-	if #allMonsters == 0 then
+	local runner = rawget(_G, "RunWithMonsterBarHidden")
+
+	local function runBestiary()
+		local allMonsters = getMonsterBestiary()
+		if #allMonsters == 0 then
+			return true
+		end
+
+		local totalPages = max(1, int((#allMonsters + MONSTERS_PER_PAGE - 1) / MONSTERS_PER_PAGE))
+		local page = 0
+		local selected = 0  -- 0-based index within the page
+		local inDetailView = false
+		local spriteUtils = getSpriteUtils()
+
+		while true do
+			if inDetailView then
+				local globalIndex = page * MONSTERS_PER_PAGE + selected + 1
+				local monster = allMonsters[globalIndex]
+				if monster then
+					drawDetailView(monster, spriteUtils)
+				end
+
+				local key = GetChar()
+				if (key == "KEY_RETURN") or (key == "KEY_ENTER") then
+					inDetailView = false
+				elseif (key == "KEY_^C") or (key == "KEY_ESCAPE") then
+					inDetailView = false
+				end
+			else
+				-- List view
+				ResizeScreen()
+				wg.clearscreen()
+
+				local sw, sh = ScreenWidth, ScreenHeight
+				local hborder = string_rep("─", sw)
+
+				local firstIndex = page * MONSTERS_PER_PAGE
+				local lastIndex = min(#allMonsters - 1, firstIndex + MONSTERS_PER_PAGE - 1)
+				local monstersOnPage = lastIndex - firstIndex + 1
+
+				-- Clamp selected to valid range
+				if selected >= monstersOnPage then
+					selected = monstersOnPage - 1
+				end
+
+				-- Title bar
+				SetBright()
+				Write(0, 0, hborder)
+				CentreInField(0, 0, sw, string_format(" Bestiary  [Page %d/%d] ", page + 1, totalPages))
+				SetNormal()
+
+				-- Content area
+				local contentTop = 2
+				local contentBottom = sh - 4
+				local contentH = contentBottom - contentTop
+				local slotH = max(4, int(contentH / max(1, monstersOnPage)))
+				local innerW = sw - 4
+				local innerX = 2
+				local overlaySprites = {}
+
+				for slot = 0, monstersOnPage - 1 do
+					local monsterIndex = firstIndex + slot + 1
+					local monster = allMonsters[monsterIndex]
+					if monster then
+						local slotY = contentTop + slot * slotH
+						local isSelected = (slot == selected)
+						drawMonsterSlot(innerX, slotY, innerW, slotH - 1, monster, isSelected, overlaySprites)
+					end
+				end
+				replaceOverlaySprites(overlaySprites)
+
+				-- Footer
+				SetBright()
+				Write(0, sh - 3, hborder)
+				SetNormal()
+				CentreInField(0, sh - 2, sw, "UP/DOWN: Select   LEFT/RIGHT: Page   ENTER: View sprite")
+				CentreInField(0, sh - 1, sw, "ESC or ^C: Close")
+
+				wg.hidecursor()
+				wg.sync()
+
+				local key = GetChar()
+				if (key == "KEY_^C") or (key == "KEY_ESCAPE") then
+					break
+				elseif (key == "KEY_RETURN") or (key == "KEY_ENTER") then
+					inDetailView = true
+				elseif (key == "KEY_UP") or (key == "KEY_SUP") then
+					if selected > 0 then
+						selected = selected - 1
+					end
+				elseif (key == "KEY_DOWN") or (key == "KEY_SDOWN") then
+					if selected < monstersOnPage - 1 then
+						selected = selected + 1
+					end
+				elseif (key == "KEY_LEFT") or (key == "KEY_SLEFT") then
+					if page > 0 then
+						page = page - 1
+						selected = 0
+					end
+				elseif (key == "KEY_RIGHT") or (key == "KEY_SRIGHT") then
+					if page < totalPages - 1 then
+						page = page + 1
+						selected = 0
+					end
+				elseif key == "KEY_HOME" then
+					page = 0
+					selected = 0
+				elseif key == "KEY_END" then
+					page = totalPages - 1
+					selected = 0
+				end
+			end
+		end
+
+		clearOverlay()
+		QueueRedraw()
 		return true
 	end
 
-	local totalPages = max(1, int((#allMonsters + MONSTERS_PER_PAGE - 1) / MONSTERS_PER_PAGE))
-	local page = 0
-	local selected = 0  -- 0-based index within the page
-	local inDetailView = false
-	local spriteUtils = getSpriteUtils()
-
-	while true do
-		if inDetailView then
-			local globalIndex = page * MONSTERS_PER_PAGE + selected + 1
-			local monster = allMonsters[globalIndex]
-			if monster then
-				drawDetailView(monster, spriteUtils)
-			end
-
-			local key = GetChar()
-			if (key == "KEY_RETURN") or (key == "KEY_ENTER") then
-				inDetailView = false
-			elseif (key == "KEY_^C") or (key == "KEY_ESCAPE") then
-				inDetailView = false
-			end
-		else
-			-- List view
-			ResizeScreen()
-			wg.clearscreen()
-
-			local sw, sh = ScreenWidth, ScreenHeight
-			local hborder = string_rep("─", sw)
-
-			local firstIndex = page * MONSTERS_PER_PAGE
-			local lastIndex = min(#allMonsters - 1, firstIndex + MONSTERS_PER_PAGE - 1)
-			local monstersOnPage = lastIndex - firstIndex + 1
-
-			-- Clamp selected to valid range
-			if selected >= monstersOnPage then
-				selected = monstersOnPage - 1
-			end
-
-			-- Title bar
-			SetBright()
-			Write(0, 0, hborder)
-			CentreInField(0, 0, sw, string_format(" Bestiary  [Page %d/%d] ", page + 1, totalPages))
-			SetNormal()
-
-			-- Content area
-			local contentTop = 2
-			local contentBottom = sh - 4
-			local contentH = contentBottom - contentTop
-			local slotH = max(4, int(contentH / max(1, monstersOnPage)))
-			local innerW = sw - 4
-			local innerX = 2
-
-			for slot = 0, monstersOnPage - 1 do
-				local monsterIndex = firstIndex + slot + 1
-				local monster = allMonsters[monsterIndex]
-				if monster then
-					local slotY = contentTop + slot * slotH
-					local isSelected = (slot == selected)
-					drawMonsterSlot(innerX, slotY, innerW, slotH - 1, monster, isSelected, spriteUtils)
-				end
-			end
-
-			-- Footer
-			SetBright()
-			Write(0, sh - 3, hborder)
-			SetNormal()
-			CentreInField(0, sh - 2, sw, "UP/DOWN: Select   LEFT/RIGHT: Page   ENTER: View sprite")
-			CentreInField(0, sh - 1, sw, "ESC or ^C: Close")
-
-			wg.hidecursor()
-			wg.sync()
-
-			local key = GetChar()
-			if (key == "KEY_^C") or (key == "KEY_ESCAPE") then
-				break
-			elseif (key == "KEY_RETURN") or (key == "KEY_ENTER") then
-				inDetailView = true
-			elseif (key == "KEY_UP") or (key == "KEY_SUP") then
-				if selected > 0 then
-					selected = selected - 1
-				end
-			elseif (key == "KEY_DOWN") or (key == "KEY_SDOWN") then
-				if selected < monstersOnPage - 1 then
-					selected = selected + 1
-				end
-			elseif (key == "KEY_LEFT") or (key == "KEY_SLEFT") then
-				if page > 0 then
-					page = page - 1
-					selected = 0
-				end
-			elseif (key == "KEY_RIGHT") or (key == "KEY_SRIGHT") then
-				if page < totalPages - 1 then
-					page = page + 1
-					selected = 0
-				end
-			elseif key == "KEY_HOME" then
-				page = 0
-				selected = 0
-			elseif key == "KEY_END" then
-				page = totalPages - 1
-				selected = 0
-			end
-		end
+	if type(runner) == "function" then
+		return runner(runBestiary)
 	end
-
-	QueueRedraw()
-	return true
+	return runBestiary()
 end
 
 -----------------------------------------------------------------------------
