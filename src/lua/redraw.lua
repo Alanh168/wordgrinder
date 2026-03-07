@@ -133,10 +133,27 @@ local function redrawstatus()
 	end
 end
 
+-- Emit an OSC 99 sprite command to Cool Retro Term's Image Overlay.
+-- Format: \027]99;sprite_id;cell_x;cell_y;target_cell_height\007
+-- target_cell_height: how many cells tall the sprite should be (can be fractional).
+-- CRT calculates the actual pixel scale from this and the image's native size.
+-- Clear: \027]99;clear\007
+local function emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight)
+	io.write(string.format("\027]99;%s;%d;%d;%.1f\007",
+		spriteId, cellX, cellY, targetCellHeight))
+	io.flush()
+end
+
+local function clearSpriteOverlay()
+	io.write("\027]99;clear\007")
+	io.flush()
+end
+
 local function redrawmonsterbar()
 	local isActive = rawget(_G, "IsMonsterQueueActive")
 	if not isActive or not isActive() then
 		monsterBarHeight = 0
+		clearSpriteOverlay()
 		return
 	end
 
@@ -144,6 +161,7 @@ local function redrawmonsterbar()
 	local getState = rawget(_G, "GetMonsterQueueState")
 	if not getCurrent or not getState then
 		monsterBarHeight = 0
+		clearSpriteOverlay()
 		return
 	end
 
@@ -151,10 +169,14 @@ local function redrawmonsterbar()
 	local state = getState()
 	if not monster then
 		monsterBarHeight = 0
+		clearSpriteOverlay()
 		return
 	end
 
 	local parts = {}
+
+	-- Monster name
+	parts[#parts + 1] = monster.name or "???"
 
 	if monster.target_word_count then
 		parts[#parts + 1] = string.format("%d/%d words",
@@ -172,8 +194,22 @@ local function redrawmonsterbar()
 
 	local barText = table.concat(parts, "  ")
 
+	-- Reserve space on the right for the sprite icon (4 cells wide).
+	local spriteReserved = 0
+	if monster.sprite_ref and monster.sprite_ref ~= "" then
+		spriteReserved = 4
+	end
+
 	SetNormal()
-	RAlignInField(0, 0, ScreenWidth, barText)
+	RAlignInField(0, 0, ScreenWidth - spriteReserved, barText)
+
+	-- Emit OSC 99 to render the monster sprite via the Image Overlay.
+	-- Sprite goes at the far right edge, just after the stats text.
+	-- Target height: 1.5 cells (slightly taller than text, centered on row).
+	-- Sprite is right-anchored to spriteX by CRT's ImageOverlay.
+	if spriteReserved > 0 then
+		emitSpriteCommand(monster.sprite_ref, ScreenWidth, 0, 1.5)
+	end
 
 	monsterBarHeight = 1
 end
