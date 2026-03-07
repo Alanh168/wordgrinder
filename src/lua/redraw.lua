@@ -4,6 +4,7 @@
 
 local int = math.floor
 local min = math.min
+local table_concat = table.concat
 local Write = wg.write
 local GotoXY = wg.gotoxy
 local ClearArea = wg.cleararea
@@ -24,6 +25,7 @@ local messages = {}
 local leftpadding = 0
 local monsterBarHeight = 0
 local monsterBarHiddenDepth = 0
+local spriteOverlayFrameId = 0
 
 function NonmodalMessage(s)
 	messages[#messages+1] = s
@@ -136,11 +138,12 @@ end
 
 -- Emit an OSC 99 sprite command to Cool Retro Term's Image Overlay.
 -- Format: \027]99;sprite_id;cell_x;cell_y;target_cell_height\007
+-- cell_x/cell_y may be fractional for more precise placement.
 -- target_cell_height: how many cells tall the sprite should be (can be fractional).
 -- CRT calculates the actual pixel scale from this and the image's native size.
 -- Clear: \027]99;clear\007
 local function emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight)
-	io.write(string.format("\027]99;%s;%d;%d;%.1f\007",
+	io.write(string.format("\027]99;%s;%.2f;%.2f;%.2f\007",
 		spriteId, cellX, cellY, targetCellHeight))
 	io.flush()
 end
@@ -148,6 +151,43 @@ end
 local function clearSpriteOverlay()
 	io.write("\027]99;clear\007")
 	io.flush()
+end
+
+local function replaceSpriteOverlay(sprites)
+	spriteOverlayFrameId = spriteOverlayFrameId + 1
+
+	local encoded = {}
+	if type(sprites) == "table" then
+		for _, sprite in ipairs(sprites) do
+			local spriteId = sprite and sprite.spriteId
+			local cellX = sprite and sprite.cellX
+			local cellY = sprite and sprite.cellY
+			local targetCellHeight = sprite and sprite.targetCellHeight
+			if type(spriteId) == "string"
+				and type(cellX) == "number"
+				and type(cellY) == "number"
+				and type(targetCellHeight) == "number" then
+				encoded[#encoded + 1] = string.format("%s,%.2f,%.2f,%.2f",
+					spriteId, cellX, cellY, targetCellHeight)
+			end
+		end
+	end
+
+	io.write(string.format("\027]99;frame;%d;%s\007",
+		spriteOverlayFrameId, table_concat(encoded, "|")))
+	io.flush()
+end
+
+function EmitSpriteOverlay(spriteId, cellX, cellY, targetCellHeight)
+	emitSpriteCommand(spriteId, cellX, cellY, targetCellHeight)
+end
+
+function ClearSpriteOverlay()
+	clearSpriteOverlay()
+end
+
+function ReplaceSpriteOverlay(sprites)
+	replaceSpriteOverlay(sprites)
 end
 
 local function isMonsterBarVisible()
@@ -248,9 +288,10 @@ local function redrawmonsterbar()
 	RAlignInField(0, 0, ScreenWidth - spriteReserved, barText)
 
 	-- Emit OSC 99 to render the monster sprite via the Image Overlay.
-	-- Each command replaces the entire overlay model (no clear needed).
+	-- Clear first because the overlay can now display multiple sprites at once.
 	-- Sprite is right-anchored to spriteX by CRT's ImageOverlay.
 	if spriteReserved > 0 then
+		clearSpriteOverlay()
 		emitSpriteCommand(monster.sprite_ref, ScreenWidth, 0, 1.5)
 	end
 

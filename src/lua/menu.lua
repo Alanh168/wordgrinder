@@ -155,6 +155,7 @@ local GameMenu = CreateMenu("Game",
 	"-",
 	{"Gclearqueue", "Q", "Clear Queue",      nil, Cmd.ClearMonsterQueue},
 	{"Gcolorviewer","V", "Color Viewer...",  nil, Cmd.ColorViewerUI},
+	{"Gspriteview", "S", "Sprite Viewer...", nil, Cmd.SpriteViewerUI},
 })
 
 local DocumentMenu = CreateMenu("Document",

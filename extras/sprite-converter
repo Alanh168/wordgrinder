@@ -6,7 +6,8 @@ cd "$(dirname "$0")/.."
 
 if [[ $# -eq 0 ]]; then
   set -- \
-    --input-dir extras/sprites/pixel32 \
+    --input-dir extras/sprites/official \
+    --multi-res \
     --output extras/sprites/formatted_sprites.lua
 fi
 

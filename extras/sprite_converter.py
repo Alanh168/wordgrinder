@@ -3,7 +3,7 @@
 Batch convert PNG sprites into a Lua palette table.
 
 Input:
-  - Reads every *.png in extras/sprites (or --input-dir)
+  - Reads every *.png in extras/sprites/official (or --input-dir)
 
 Output:
   - Writes one Lua file (default extras/sprites/formatted_sprites.lua)
@@ -33,6 +33,8 @@ from PIL import Image
 
 
 Rgb = Tuple[int, int, int]
+DEFAULT_INPUT_DIR = "extras/sprites/official"
+DEFAULT_OUTPUT_PATH = "extras/sprites/formatted_sprites.lua"
 
 
 def build_xterm_palette() -> List[Rgb]:
@@ -210,13 +212,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Batch convert PNG sprites to Lua palette tables")
     parser.add_argument(
         "--input-dir",
-        default="extras/sprites",
-        help="Directory containing PNG files (default: extras/sprites)",
+        default=DEFAULT_INPUT_DIR,
+        help=f"Directory containing final PNG sprites (default: {DEFAULT_INPUT_DIR})",
     )
     parser.add_argument(
         "--output",
-        default="extras/sprites/formatted_sprites.lua",
-        help="Output Lua file (default: extras/sprites/formatted_sprites.lua)",
+        default=DEFAULT_OUTPUT_PATH,
+        help=f"Output Lua file (default: {DEFAULT_OUTPUT_PATH})",
     )
     parser.add_argument(
         "--width",
@@ -254,7 +256,11 @@ def main() -> int:
 
     pngs = find_pngs(input_dir)
     if not pngs:
-        print(f"No PNG files found in {input_dir}", file=sys.stderr)
+        print(
+            f"No PNG files found in {input_dir}. "
+            "Copy the chosen final sprite PNGs into the official folder first.",
+            file=sys.stderr,
+        )
         return 1
 
     converted: List[Tuple[str, str, List[List[int]], List[int], int, int]] = []

@@ -551,6 +551,7 @@ emit("build ", OBJDIR.."/luascripts.c: luascripts ", table.concat({
     "src/lua/addons/directories.lua",
     "src/lua/addons/recents.lua",
     "src/lua/addons/colorviewer.lua",
+    "src/lua/addons/spriteviewer.lua",
     "src/lua/data/bestiary.lua",
     "src/lua/addons/bestiary.lua",
     "src/lua/addons/statistics.lua",

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run from the WordGrinder repository root, no matter the current directory.
+cd "$(dirname "$0")/.."
+
+python3 extras/generate_sprite_variants.py "$@"
