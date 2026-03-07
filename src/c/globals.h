@@ -124,6 +124,7 @@ extern void dpy_shutdown(void);
 
 extern void dpy_setattr(int andmask, int ormask);
 extern bool dpy_setcolorindex(int colorindex);
+extern bool dpy_setcolorpair(int fg, int bg);
 extern void dpy_writechar(int x, int y, uni_t c);
 extern void dpy_setcursor(int x, int y, bool shown);
 extern void dpy_clearscreen(void);

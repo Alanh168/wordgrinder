@@ -86,6 +86,15 @@ static int setcolorindex_cb(lua_State* L)
 	return 1;
 }
 
+static int setcolorpair_cb(lua_State* L)
+{
+	int fg = forceinteger(L, 1);
+	int bg = forceinteger(L, 2);
+	bool ok = dpy_setcolorpair(fg, bg);
+	lua_pushboolean(L, ok);
+	return 1;
+}
+
 static int setnormal_cb(lua_State* L)
 {
 	dpy_setattr(0, 0);
@@ -257,6 +266,7 @@ void screen_init(const char* argv[])
 		{ "setdim",                    setdim_cb },
 		{ "setitalic",                 setitalic_cb },
 		{ "setcolorindex",             setcolorindex_cb },
+		{ "setcolorpair",              setcolorpair_cb },
 		{ "setnormal",                 setnormal_cb },
 		{ "write",                     write_cb },
 		{ "cleararea",                 cleararea_cb },

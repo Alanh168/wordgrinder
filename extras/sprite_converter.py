@@ -199,6 +199,13 @@ def find_pngs(input_dir: Path) -> List[Path]:
     return files
 
 
+MULTI_RES_SIZES = [
+    ("_sm", 8, 8),
+    ("_md", 16, 16),
+    ("", 32, 32),
+]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Batch convert PNG sprites to Lua palette tables")
     parser.add_argument(
@@ -229,6 +236,12 @@ def main() -> int:
         default=0,
         help="Pixels with alpha <= threshold become transparent (default: 0)",
     )
+    parser.add_argument(
+        "--multi-res",
+        action="store_true",
+        default=False,
+        help="Generate multiple resolutions per sprite (_sm 8x8, _md 16x16, base 32x32)",
+    )
 
     args = parser.parse_args()
 
@@ -247,17 +260,26 @@ def main() -> int:
     converted: List[Tuple[str, str, List[List[int]], List[int], int, int]] = []
     seen_keys = set()
     for path in pngs:
-        key = sanitize_name(path.stem)
-        base = key
+        base_key = sanitize_name(path.stem)
+        base = base_key
         n = 2
-        while key in seen_keys:
-            key = f"{base}_{n}"
+        while base_key in seen_keys:
+            base_key = f"{base}_{n}"
             n += 1
-        seen_keys.add(key)
 
-        rows, palette, w, h = convert_image(path, args.width, args.height, args.alpha_threshold)
-        converted.append((key, path.name, rows, palette, w, h))
-        print(f"{path.name}: {w}x{h}, {len(palette)} palette entries -> key '{key}'")
+        if args.multi_res:
+            for suffix, res_w, res_h in MULTI_RES_SIZES:
+                key = f"{base_key}{suffix}"
+                seen_keys.add(key)
+                rows, palette, w, h = convert_image(path, res_w, res_h, args.alpha_threshold)
+                converted.append((key, path.name, rows, palette, w, h))
+                print(f"{path.name}: {w}x{h}, {len(palette)} palette entries -> key '{key}'")
+        else:
+            key = base_key
+            seen_keys.add(key)
+            rows, palette, w, h = convert_image(path, args.width, args.height, args.alpha_threshold)
+            converted.append((key, path.name, rows, palette, w, h))
+            print(f"{path.name}: {w}x{h}, {len(palette)} palette entries -> key '{key}'")
 
     write_lua_output(output, converted)
     print(f"Wrote {output} ({len(converted)} sprites)")

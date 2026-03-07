@@ -153,24 +153,24 @@ local function drawMonsterSlot(x, y, w, h, monster, isSelected, spriteUtils)
 	local tlStr = string_format("Time: %s", formatTimeLimitString(monster.target_time_limit_minutes))
 	Write(infoX, y + 2, GetBoundedString(tlStr, infoW))
 
-	-- Draw sprite (small) if available
+	-- Draw sprite (small) using full-block rendering
 	if spriteUtils and monster.sprite_ref and monster.sprite_ref ~= "" then
-		local spriteH = max(1, h - 1)
-		local sprite, palette = spriteUtils.getSpriteByKey(
-			monster.sprite_ref,
+		local termRows = max(1, h - 1)
+		local resampleMode = spriteUtils.RESAMPLE_NEAREST or "nearest"
+		local getSprite = spriteUtils.getSpriteByKeyMultiRes or spriteUtils.getSpriteByKey
+		local sprite, palette = getSprite(
+			monster.sprite_ref, "_md",
 			spriteAreaW,
-			spriteH,
+			termRows,
 			BESTIARY_SMALL_PIXEL_WIDTH,
-			0)
+			0,
+			resampleMode)
 		if sprite and palette then
-			local spriteW, spH = spriteUtils.getSpriteSize(sprite, BESTIARY_SMALL_PIXEL_WIDTH)
+			local spriteW = spriteUtils.getSpriteSize(sprite, BESTIARY_SMALL_PIXEL_WIDTH)
 			local drawX = x + 2 + int((spriteAreaW - spriteW) / 2)
-			local drawY = y + int((h - spH) / 2)
-			for rowi, row in ipairs(sprite) do
-				local ry = drawY + rowi - 1
-				if ry >= y and ry < y + h then
-					spriteUtils.renderSpriteRow(drawX, ry, row, palette, BESTIARY_SMALL_PIXEL_WIDTH)
-				end
+			local drawY = y + int((h - #sprite) / 2)
+			for row = 1, #sprite do
+				spriteUtils.renderSpriteRow(drawX, drawY + row - 1, sprite[row], palette, BESTIARY_SMALL_PIXEL_WIDTH)
 			end
 			SetNormal()
 		end
@@ -201,28 +201,25 @@ local function drawDetailView(monster, spriteUtils)
 		formatTimeLimitString(monster.target_time_limit_minutes))
 	CentreInField(0, 2, sw, infoLine)
 
-	-- Sprite area (large)
+	-- Sprite area (large) — full-block rendering
 	local spriteTop = 4
 	local spriteBottom = sh - 4
-	local availableH = spriteBottom - spriteTop
+	local termRows = spriteBottom - spriteTop
 	local availableW = sw - 4
 
 	if spriteUtils and monster.sprite_ref and monster.sprite_ref ~= "" then
 		local sprite, palette = spriteUtils.getSpriteByKey(
 			monster.sprite_ref,
 			availableW,
-			availableH,
+			termRows,
 			BESTIARY_LARGE_PIXEL_WIDTH,
 			0)
 		if sprite and palette then
-			local spriteW, spriteH = spriteUtils.getSpriteSize(sprite, BESTIARY_LARGE_PIXEL_WIDTH)
+			local spriteW = spriteUtils.getSpriteSize(sprite, BESTIARY_LARGE_PIXEL_WIDTH)
 			local drawX = int((sw - spriteW) / 2)
-			local drawY = spriteTop + int((availableH - spriteH) / 2)
-			for rowi, row in ipairs(sprite) do
-				local ry = drawY + rowi - 1
-				if ry >= spriteTop and ry <= spriteBottom then
-					spriteUtils.renderSpriteRow(drawX, ry, row, palette, BESTIARY_LARGE_PIXEL_WIDTH)
-				end
+			local drawY = spriteTop + int((termRows - #sprite) / 2)
+			for row = 1, #sprite do
+				spriteUtils.renderSpriteRow(drawX, drawY + row - 1, sprite[row], palette, BESTIARY_LARGE_PIXEL_WIDTH)
 			end
 			SetNormal()
 		end
@@ -295,7 +292,7 @@ function Cmd.BestiaryUI()
 			local contentTop = 2
 			local contentBottom = sh - 4
 			local contentH = contentBottom - contentTop
-			local slotH = max(4, int(contentH / MONSTERS_PER_PAGE))
+			local slotH = max(4, int(contentH / max(1, monstersOnPage)))
 			local innerW = sw - 4
 			local innerX = 2
 

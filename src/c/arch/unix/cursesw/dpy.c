@@ -26,6 +26,12 @@ static int indexed_pairs_used = 0; /* Number of runtime pairs allocated in this 
 static int indexed_colour_to_pair[INDEXED_COLOUR_COUNT]; /* xterm index -> pair id cache; 0=unseen, -1=unsupported. */
 static bool indexed_pairs_initialised = false; /* Guards one-time runtime pair setup. */
 
+/* Cache for (fg, bg) colour pairs used by half-block sprite rendering. */
+#define FGBG_CACHE_SIZE 128
+typedef struct { int fg; int bg; int pair; } fgbg_entry;
+static fgbg_entry fgbg_cache[FGBG_CACHE_SIZE];
+static int fgbg_cache_used = 0;
+
 /* Clamp caller-supplied indexed colours to the supported 0..255 range. */
 static int clamp_colour_index(int colour)
 {
@@ -42,6 +48,7 @@ static void reset_indexed_pair_cache(void)
 	indexed_pair = 0;
 	indexed_pairs_used = 0;
 	memset(indexed_colour_to_pair, 0, sizeof(indexed_colour_to_pair));
+	fgbg_cache_used = 0;
 }
 
 /* Initialize runtime indexed-colour support once per curses session. */
@@ -236,6 +243,53 @@ bool dpy_setcolorindex(int colorindex)
 		indexed_pair = resolve_indexed_pair(colorindex);
 	apply_attr();
 	return indexed_pair > 0;
+}
+
+/* Set an explicit (fg, bg) colour pair for half-block sprite rendering. */
+bool dpy_setcolorpair(int fg, int bg)
+{
+	init_indexed_pairs();
+
+	if (!has_colors() || (indexed_pair_capacity <= 0))
+		return false;
+
+	fg = clamp_colour_index(fg);
+	bg = clamp_colour_index(bg);
+
+	if (fg >= COLORS || bg >= COLORS)
+		return false;
+
+	/* Search existing cache for this (fg, bg) combination. */
+	for (int i = 0; i < fgbg_cache_used; i++)
+	{
+		if (fgbg_cache[i].fg == fg && fgbg_cache[i].bg == bg)
+		{
+			indexed_pair = fgbg_cache[i].pair;
+			apply_attr();
+			return true;
+		}
+	}
+
+	/* Allocate a new ncurses pair from the shared pool. */
+	if (indexed_pairs_used >= indexed_pair_capacity)
+		return false;
+	if (fgbg_cache_used >= FGBG_CACHE_SIZE)
+		return false;
+
+	int pair = INDEXED_PAIR_BASE + indexed_pairs_used;
+	indexed_pairs_used++;
+
+	if (init_pair(pair, fg, bg) == ERR)
+		return false;
+
+	fgbg_cache[fgbg_cache_used].fg = fg;
+	fgbg_cache[fgbg_cache_used].bg = bg;
+	fgbg_cache[fgbg_cache_used].pair = pair;
+	fgbg_cache_used++;
+
+	indexed_pair = pair;
+	apply_attr();
+	return true;
 }
 
 /* Encode one Unicode codepoint as UTF-8 and render it at (x, y). */

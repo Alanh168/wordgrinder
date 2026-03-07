@@ -266,12 +266,12 @@ end
 
 local BLOCK = " "
 local DEFAULT_SPRITE_PIXEL_WIDTH = 2
-local BATTLE_SPRITE_PIXEL_WIDTH = 1
+local BATTLE_SPRITE_PIXEL_WIDTH = 2
 local BATTLE_EXTRA_DOWNSCALE_STEPS = 0
-local BATTLE_WINDOW_HEIGHT_RATIO = 0.75
-local BATTLE_SLOT_MAX_INNER_W = 14
-local BATTLE_SLOT_MIN_INNER_H = 6
-local BATTLE_SLOT_MAX_INNER_H = 10
+local BATTLE_WINDOW_HEIGHT_RATIO = 0.90
+local BATTLE_SLOT_MAX_INNER_W = 24
+local BATTLE_SLOT_MIN_INNER_H = 8
+local BATTLE_SLOT_MAX_INNER_H = 16
 local SetColorIndex = wg.setcolorindex
 
 local function loadFormattedSprites()
@@ -424,61 +424,88 @@ local function downscaleSpriteBy2(spriteRows)
 	return reduced
 end
 
-local function resampleSprite(spriteRows, targetWidth, targetHeight)
+-- Resample mode: "majority" picks the most common non-zero colour in each
+-- source block (preserves body mass / silhouette).  "nearest" picks the
+-- centre pixel with a transparent-fallback scan (preserves fine details
+-- like eyes, outlines, claws).
+local RESAMPLE_MAJORITY = "majority"
+local RESAMPLE_NEAREST  = "nearest"
+
+local function resampleBlock_majority(spriteRows, x0, y0, x1, y1)
+	local counts = {}
+	local bestValue = 0
+	local bestCount = 0
+	for sy = y0 + 1, y1 + 1 do
+		local srcRow = spriteRows[sy] or {}
+		for sx = x0 + 1, x1 + 1 do
+			local value = srcRow[sx] or 0
+			if value ~= 0 then
+				local count = (counts[value] or 0) + 1
+				counts[value] = count
+				if count > bestCount then
+					bestCount = count
+					bestValue = value
+				end
+			end
+		end
+	end
+	if bestCount == 0 then
+		local cy = int((y0 + y1) / 2) + 1
+		local cx = int((x0 + x1) / 2) + 1
+		bestValue = (spriteRows[cy] and spriteRows[cy][cx]) or 0
+	end
+	return bestValue
+end
+
+local function resampleBlock_nearest(spriteRows, x0, y0, x1, y1)
+	local cy = int((y0 + y1) / 2) + 1
+	local cx = int((x0 + x1) / 2) + 1
+	local centerValue = (spriteRows[cy] and spriteRows[cy][cx]) or 0
+	if centerValue ~= 0 then
+		return centerValue
+	end
+	for sy = y0 + 1, y1 + 1 do
+		local srcRow = spriteRows[sy] or {}
+		for sx = x0 + 1, x1 + 1 do
+			local v = srcRow[sx] or 0
+			if v ~= 0 then
+				return v
+			end
+		end
+	end
+	return 0
+end
+
+local function resampleSprite(spriteRows, targetWidth, targetHeight, mode)
 	local srcWidth, srcHeight = getSpriteGridSize(spriteRows)
 	if srcWidth == 0 or srcHeight == 0 then
 		return {}
 	end
 
+	local blockFn = (mode == RESAMPLE_NEAREST)
+		and resampleBlock_nearest
+		or  resampleBlock_majority
+
 	local resized = {}
 	for ty = 0, targetHeight - 1 do
 		local y0 = int(ty * srcHeight / targetHeight)
 		local y1 = int(((ty + 1) * srcHeight) / targetHeight) - 1
-		if y1 < y0 then
-			y1 = y0
-		end
+		if y1 < y0 then y1 = y0 end
 
 		local dstRow = {}
 		for tx = 0, targetWidth - 1 do
 			local x0 = int(tx * srcWidth / targetWidth)
 			local x1 = int(((tx + 1) * srcWidth) / targetWidth) - 1
-			if x1 < x0 then
-				x1 = x0
-			end
+			if x1 < x0 then x1 = x0 end
 
-			local counts = {}
-			local bestValue = 0
-			local bestCount = 0
-
-			for sy = y0 + 1, y1 + 1 do
-				local srcRow = spriteRows[sy] or {}
-				for sx = x0 + 1, x1 + 1 do
-					local value = srcRow[sx] or 0
-					if value ~= 0 then
-						local count = (counts[value] or 0) + 1
-						counts[value] = count
-						if count > bestCount then
-							bestCount = count
-							bestValue = value
-						end
-					end
-				end
-			end
-
-			if bestCount == 0 then
-				local cy = int((y0 + y1) / 2) + 1
-				local cx = int((x0 + x1) / 2) + 1
-				bestValue = (spriteRows[cy] and spriteRows[cy][cx]) or 0
-			end
-
-			dstRow[#dstRow + 1] = bestValue
+			dstRow[#dstRow + 1] = blockFn(spriteRows, x0, y0, x1, y1)
 		end
 		resized[#resized + 1] = dstRow
 	end
 	return resized
 end
 
-local function fitSpriteToArea(spriteRows, maxWidth, maxHeight, pixelWidth, extraDownscaleSteps)
+local function fitSpriteToArea(spriteRows, maxWidth, maxHeight, pixelWidth, extraDownscaleSteps, resampleMode)
 	pixelWidth = pixelWidth or DEFAULT_SPRITE_PIXEL_WIDTH
 
 	local trimmed = trimSprite(spriteRows)
@@ -495,7 +522,7 @@ local function fitSpriteToArea(spriteRows, maxWidth, maxHeight, pixelWidth, extr
 	local fitted = trimmed
 
 	if targetWidth < srcWidth or targetHeight < srcHeight then
-		fitted = resampleSprite(trimmed, targetWidth, targetHeight)
+		fitted = resampleSprite(trimmed, targetWidth, targetHeight, resampleMode)
 	end
 
 	local extra = extraDownscaleSteps or 0
@@ -566,7 +593,77 @@ local function renderSpriteRow(x, y, row, palette, pixelWidth)
 	end
 end
 
-local function getSpriteByKey(spriteKey, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
+-- Resolve a palette entry to a raw xterm-256 colour index.
+local function paletteEntryToIndex(entry)
+	if type(entry) == "number" then
+		return entry
+	elseif type(entry) == "table" then
+		if type(entry.index) == "number" then
+			return entry.index
+		end
+	end
+	return nil
+end
+
+local SetColorPair = wg.setcolorpair
+local HALF_UPPER = string.char(0xe2, 0x96, 0x80) -- ▀ (UTF-8)
+local HALF_LOWER = string.char(0xe2, 0x96, 0x84) -- ▄ (UTF-8)
+
+-- Render two sprite rows into one terminal row using half-block characters.
+-- Each terminal cell encodes a top pixel (fg via ▀) and bottom pixel (bg).
+-- This doubles the effective vertical resolution of sprites.
+local function renderHalfBlockRow(x, y, topRow, bottomRow, palette, pixelWidth)
+	pixelWidth = pixelWidth or DEFAULT_SPRITE_PIXEL_WIDTH
+	local cols = max(#topRow, bottomRow and #bottomRow or 0)
+	for col = 1, cols do
+		local topSlot = topRow[col] or 0
+		local botSlot = bottomRow and bottomRow[col] or 0
+		local topIdx = (topSlot ~= 0) and paletteEntryToIndex(palette[topSlot]) or nil
+		local botIdx = (botSlot ~= 0) and paletteEntryToIndex(palette[botSlot]) or nil
+
+		local px = x + (col - 1) * pixelWidth
+		if topIdx and botIdx then
+			-- Both halves have colour: use ▀ with fg=top, bg=bottom
+			SetNormal()
+			if SetColorPair(topIdx, botIdx) then
+				local fill = string.rep(HALF_UPPER, pixelWidth)
+				Write(px, y, fill)
+			end
+		elseif topIdx then
+			-- Only top half: use ▀ with fg=top (bg = default/black)
+			SetNormal()
+			if trySetPaletteIndex(topIdx) then
+				local fill = string.rep(HALF_UPPER, pixelWidth)
+				Write(px, y, fill)
+			end
+		elseif botIdx then
+			-- Only bottom half: use ▄ with fg=bottom (bg = default/black)
+			SetNormal()
+			if trySetPaletteIndex(botIdx) then
+				local fill = string.rep(HALF_LOWER, pixelWidth)
+				Write(px, y, fill)
+			end
+		end
+	end
+end
+
+-- Render a full sprite using half-block characters.  Takes the sprite grid,
+-- palette, position, and pixel width.  Returns the number of terminal rows
+-- consumed (half the sprite grid height, rounded up).
+local function renderSpriteHalfBlock(x, y, spriteRows, palette, pixelWidth)
+	pixelWidth = pixelWidth or DEFAULT_SPRITE_PIXEL_WIDTH
+	local termRow = 0
+	for i = 1, #spriteRows, 2 do
+		local topRow = spriteRows[i]
+		local botRow = spriteRows[i + 1]  -- may be nil on odd-height sprites
+		renderHalfBlockRow(x, y + termRow, topRow, botRow, palette, pixelWidth)
+		termRow = termRow + 1
+	end
+	SetNormal()
+	return termRow
+end
+
+local function getSpriteByKey(spriteKey, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps, resampleMode)
 	local def = getSpriteDefinition(spriteKey)
 	if not def then
 		return nil, nil
@@ -576,7 +673,8 @@ local function getSpriteByKey(spriteKey, availableWidth, availableHeight, pixelW
 		availableWidth,
 		availableHeight,
 		pixelWidth,
-		extraDownscaleSteps)
+		extraDownscaleSteps,
+		resampleMode)
 	return spriteRows, (def.color_palette or def.palette)
 end
 
@@ -585,17 +683,33 @@ local function getEvolutionSprite(wordCount, availableWidth, availableHeight, pi
 	return getSpriteByKey(stage.sprite_key, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
 end
 
+-- Try a size-suffixed key first (_md, _sm), fall back to the base key.
+-- This lets callers request a pre-made smaller sprite when available.
+local function getSpriteByKeyMultiRes(spriteKey, suffix, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps, resampleMode)
+	if suffix and suffix ~= "" then
+		local rows, pal = getSpriteByKey(spriteKey .. suffix, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps, resampleMode)
+		if rows then
+			return rows, pal
+		end
+	end
+	return getSpriteByKey(spriteKey, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps, resampleMode)
+end
+
 -----------------------------------------------------------------------------
 -- Expose sprite utilities for other addons (e.g. bestiary)
 
 GlobalSpriteUtils = {
 	getSpriteByKey = getSpriteByKey,
+	getSpriteByKeyMultiRes = getSpriteByKeyMultiRes,
 	getSpriteSize = getSpriteSize,
 	renderSpriteRow = renderSpriteRow,
+	renderSpriteHalfBlock = renderSpriteHalfBlock,
 	fitSpriteToArea = fitSpriteToArea,
 	getSpriteDefinition = getSpriteDefinition,
 	DEFAULT_PIXEL_WIDTH = DEFAULT_SPRITE_PIXEL_WIDTH,
 	BATTLE_PIXEL_WIDTH = BATTLE_SPRITE_PIXEL_WIDTH,
+	RESAMPLE_MAJORITY = RESAMPLE_MAJORITY,
+	RESAMPLE_NEAREST = RESAMPLE_NEAREST,
 }
 
 -----------------------------------------------------------------------------
@@ -873,7 +987,7 @@ function Cmd.BattleSelectUI()
 	end
 
 	local monsters = getMonsterBestiary()
-	local queueSlots = 6
+	local maxQueueSlots = 6
 
 	local function drawScreen()
 		ResizeScreen()
@@ -903,9 +1017,23 @@ function Cmd.BattleSelectUI()
 		local contentY = boxY + 1
 		local contentW = boxW
 
-		-- Row 1: six queue boxes.
-		local slotY = contentY
+		-- Determine how many slots fit with a minimum inner width that
+		-- keeps sprites recognisable (at least 12 columns at pixelWidth 2
+		-- gives 6 sprite-pixel columns — enough for structure).
 		local slotGap = 1
+		local minUsableSlotW = 12
+		local queueSlots = maxQueueSlots
+		while queueSlots > 1 do
+			local testW = int((contentW - (queueSlots - 1) * slotGap) / queueSlots) - 2
+			if testW >= minUsableSlotW then
+				break
+			end
+			queueSlots = queueSlots - 1
+		end
+		queueSlots = min(queueSlots, #monsters)
+
+		-- Row 1: queue boxes.
+		local slotY = contentY
 		local slotInnerW = int((contentW - (queueSlots - 1) * slotGap) / queueSlots) - 2
 		if slotInnerW < 0 then
 			slotGap = 0
@@ -937,18 +1065,19 @@ function Cmd.BattleSelectUI()
 				spriteKey = monster.sprite_ref
 			end
 
-			local sprite, palette = getSpriteByKey(
-				spriteKey,
+			-- Try _md (16x16) variant first for better small-size fidelity.
+			local sprite, palette = getSpriteByKeyMultiRes(
+				spriteKey, "_md",
 				slotInnerW,
 				slotInnerH,
 				BATTLE_SPRITE_PIXEL_WIDTH,
 				BATTLE_EXTRA_DOWNSCALE_STEPS)
 			if sprite and palette then
-				local spriteW, spriteH = getSpriteSize(sprite, BATTLE_SPRITE_PIXEL_WIDTH)
+				local spriteW = getSpriteSize(sprite, BATTLE_SPRITE_PIXEL_WIDTH)
 				local drawX = x + 1 + int((slotInnerW - spriteW) / 2)
-				local drawY = slotY + 1 + int((slotInnerH - spriteH) / 2)
-				for rowi, row in ipairs(sprite) do
-					renderSpriteRow(drawX, drawY + rowi - 1, row, palette, BATTLE_SPRITE_PIXEL_WIDTH)
+				local drawY = slotY + 1 + int((slotInnerH - #sprite) / 2)
+				for row = 1, #sprite do
+					renderSpriteRow(drawX, drawY + row - 1, sprite[row], palette, BATTLE_SPRITE_PIXEL_WIDTH)
 				end
 			end
 			SetNormal()

@@ -880,6 +880,13 @@ bool dpy_setcolorindex(int colorindex)
 	return false;
 }
 
+bool dpy_setcolorpair(int fg, int bg)
+{
+	(void) fg;
+	(void) bg;
+	return false;
+}
+
 void dpy_writechar(int x, int y, uni_t c)
 {
 	if ((x < 0) || (y < 0) || (x >= screenwidth) || (y >= screenheight))
