@@ -352,3 +352,167 @@ function Cmd.BestiaryUI()
 	QueueRedraw()
 	return true
 end
+
+-----------------------------------------------------------------------------
+-- Monster Queue System
+-- Tracks the active battle queue and progress against the current monster.
+
+local monsterQueue = {}
+local battleSelectQueue = {}
+local queueState = {
+	wordsTyped = 0,
+	startTime = nil,
+	lastKeyTime = nil,
+	_lastWordCount = nil,
+}
+
+local function getCurrentWordCount()
+	local getter = rawget(_G, "GetLiveCurrentDocumentWordCount")
+	if type(getter) == "function" then
+		return getter()
+	end
+	return Document.wordcount or 0
+end
+
+local function getSelectionSlotCount(queue)
+	local count = 0
+	if type(queue) ~= "table" then
+		return 0
+	end
+	for key, _ in pairs(queue) do
+		if (type(key) == "number") and (key > count) then
+			count = key
+		end
+	end
+	return count
+end
+
+local function setBattleSelectQueueInternal(newQueue, slotCount)
+	battleSelectQueue = {}
+	slotCount = slotCount or getSelectionSlotCount(newQueue)
+	for i = 1, slotCount do
+		local monster = type(newQueue) == "table" and newQueue[i] or nil
+		if type(monster) == "table" then
+			battleSelectQueue[i] = monster
+		else
+			battleSelectQueue[i] = false
+		end
+	end
+end
+
+local function syncBattleSelectQueueToActive()
+	setBattleSelectQueueInternal(monsterQueue, #monsterQueue)
+end
+
+local function resetQueueState(isActive)
+	queueState.wordsTyped = 0
+	if isActive then
+		queueState.startTime = os.time()
+		queueState.lastKeyTime = os.time()
+		queueState._lastWordCount = getCurrentWordCount()
+	else
+		queueState.startTime = nil
+		queueState.lastKeyTime = nil
+		queueState._lastWordCount = nil
+	end
+end
+
+function IsMonsterQueueActive()
+	return #monsterQueue > 0
+end
+
+function GetCurrentMonster()
+	return monsterQueue[1]
+end
+
+function GetMonsterQueue()
+	return monsterQueue
+end
+
+function GetMonsterQueueState()
+	return queueState
+end
+
+function GetBattleSelectQueue(slotCount)
+	local copy = {}
+	slotCount = slotCount or getSelectionSlotCount(battleSelectQueue)
+	for i = 1, slotCount do
+		copy[i] = battleSelectQueue[i]
+	end
+	return copy
+end
+
+function SetBattleSelectQueue(newQueue, slotCount)
+	setBattleSelectQueueInternal(newQueue, slotCount)
+end
+
+function QueueMonster(monster)
+	if type(monster) ~= "table" then
+		return
+	end
+	monsterQueue[#monsterQueue + 1] = monster
+	syncBattleSelectQueueToActive()
+	if #monsterQueue == 1 then
+		resetQueueState(true)
+	end
+end
+
+function SetMonsterQueue(newQueue)
+	monsterQueue = {}
+	if type(newQueue) == "table" then
+		for _, monster in ipairs(newQueue) do
+			if type(monster) == "table" then
+				monsterQueue[#monsterQueue + 1] = monster
+			end
+		end
+	end
+	syncBattleSelectQueueToActive()
+	resetQueueState(#monsterQueue > 0)
+end
+
+function QueueAllMonsters()
+	SetMonsterQueue(monsters)
+end
+
+function DequeueCurrentMonster()
+	if #monsterQueue == 0 then return end
+	local defeated = table.remove(monsterQueue, 1)
+	syncBattleSelectQueueToActive()
+	if #monsterQueue > 0 then
+		resetQueueState(true)
+	else
+		resetQueueState(false)
+	end
+	return defeated
+end
+
+function ClearMonsterQueue()
+	SetMonsterQueue(nil)
+end
+
+-- Track word count changes for monster queue
+do
+	local function onChanged(event, token)
+		if #monsterQueue == 0 then return end
+		local currentWC = getCurrentWordCount()
+		local lastWC = queueState._lastWordCount or currentWC
+		local delta = currentWC - lastWC
+		if delta > 0 then
+			queueState.wordsTyped = queueState.wordsTyped + delta
+		end
+		queueState._lastWordCount = currentWC
+		queueState.lastKeyTime = os.time()
+
+		-- Check if current monster is defeated by word count
+		local monster = monsterQueue[1]
+		if monster and monster.target_word_count then
+			if queueState.wordsTyped >= monster.target_word_count then
+				local defeated = DequeueCurrentMonster()
+				if defeated then
+					NonmodalMessage(string_format("%s defeated!", defeated.name))
+				end
+			end
+		end
+	end
+	AddEventListener(Event.Changed, onChanged)
+end

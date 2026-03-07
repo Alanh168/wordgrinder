@@ -138,12 +138,23 @@ local GlobalSettingsMenu = CreateMenu("Global settings",
 	{"FSDebug",       "X", "Debugging options...",    nil,         Cmd.ConfigureDebug},
 })
 
+function Cmd.ClearMonsterQueue()
+	local clearQueue = rawget(_G, "ClearMonsterQueue")
+	if clearQueue then
+		clearQueue()
+		NonmodalMessage("Monster queue cleared.")
+	end
+	return true
+end
+
 local GameMenu = CreateMenu("Game",
 {
-	{"Gcharacter",  "C", "Character",      nil, Cmd.CharacterUI},
+	{"Gcharacter",  "C", "Character",        nil, Cmd.CharacterUI},
 	{"Gbattle",     "B", "Battle Select...", nil, Cmd.BattleSelectUI},
-	{"Gbestiary",   "E", "Bestiary...",     nil, Cmd.BestiaryUI},
-	{"Gcolorviewer","V", "Color Viewer...", nil, Cmd.ColorViewerUI},
+	{"Gbestiary",   "E", "Bestiary...",      nil, Cmd.BestiaryUI},
+	"-",
+	{"Gclearqueue", "Q", "Clear Queue",      nil, Cmd.ClearMonsterQueue},
+	{"Gcolorviewer","V", "Color Viewer...",  nil, Cmd.ColorViewerUI},
 })
 
 local DocumentMenu = CreateMenu("Document",

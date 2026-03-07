@@ -22,6 +22,7 @@ local BLINK_TIME = 0.8
 
 local messages = {}
 local leftpadding = 0
+local monsterBarHeight = 0
 
 function NonmodalMessage(s)
 	messages[#messages+1] = s
@@ -132,6 +133,51 @@ local function redrawstatus()
 	end
 end
 
+local function redrawmonsterbar()
+	local isActive = rawget(_G, "IsMonsterQueueActive")
+	if not isActive or not isActive() then
+		monsterBarHeight = 0
+		return
+	end
+
+	local getCurrent = rawget(_G, "GetCurrentMonster")
+	local getState = rawget(_G, "GetMonsterQueueState")
+	if not getCurrent or not getState then
+		monsterBarHeight = 0
+		return
+	end
+
+	local monster = getCurrent()
+	local state = getState()
+	if not monster then
+		monsterBarHeight = 0
+		return
+	end
+
+	local parts = {}
+
+	if monster.target_word_count then
+		parts[#parts + 1] = string.format("%d/%d words",
+			state.wordsTyped or 0, monster.target_word_count)
+	end
+
+	if monster.target_time_limit_minutes then
+		local elapsed = 0
+		if state.startTime then
+			elapsed = int((os.time() - state.startTime) / 60)
+		end
+		parts[#parts + 1] = string.format("%d/%d min",
+			elapsed, monster.target_time_limit_minutes)
+	end
+
+	local barText = table.concat(parts, "  ")
+
+	SetNormal()
+	RAlignInField(0, 0, ScreenWidth, barText)
+
+	monsterBarHeight = 1
+end
+
 local topmarker = {
 	"     ▲          ▲          ▲          ▲          ▲     ",
 	"───────────────────────────────────────────────────────"
@@ -172,6 +218,14 @@ end
 
 function RedrawScreen()
 	wg.clearscreen()
+
+	-- Determine top offset for monster bar
+	local topOffset = 0
+	local isQueueActive = rawget(_G, "IsMonsterQueueActive")
+	if isQueueActive and isQueueActive() then
+		topOffset = 1
+	end
+
 	local cp, cw, co = Document.cp, Document.cw, Document.co
 	local cy = int(ScreenHeight / 2)
 	local margin = Document.margin
@@ -209,7 +263,7 @@ function RedrawScreen()
 
 	Document.topp = nil
 	Document.topw = nil
-	while (y >= 0) do
+	while (y >= topOffset) do
 		local paragraph = Document[pn]
 		if not paragraph then
 			break
@@ -236,7 +290,7 @@ function RedrawScreen()
 			Document.topw = l.wn
 			y = y - 1
 
-			if (y < 0) then
+			if (y < topOffset) then
 				break
 			end
 		end
@@ -245,7 +299,7 @@ function RedrawScreen()
 		pn = pn - 1
 	end
 
-	if (y >= 0) and WantTerminators() then
+	if (y >= topOffset) and WantTerminators() then
 		drawtopmarker(y)
 	end
 
@@ -274,7 +328,7 @@ function RedrawScreen()
 			-- If the top of the page hasn't already been set, then the
 			-- current paragraph extends off the top of the screen.
 
-			if not Document.topp and (y == 0) then
+			if not Document.topp and (y == topOffset) then
 				Document.topp = pn
 				Document.topw = l.wn
 			end
@@ -302,6 +356,9 @@ function RedrawScreen()
 	if (y <= ScreenHeight) and WantTerminators() then
 		drawbottommarker(y)
 	end
+
+	-- Draw monster bar at top (after text so it overwrites any overflow)
+	redrawmonsterbar()
 
 	redrawstatus()
 

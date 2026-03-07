@@ -279,7 +279,7 @@ DocumentClass =
 		local pn = 1
 
 		for _, p in ipairs(self) do
-			wc = wc + #p
+			wc = wc + CountParagraphWords(p)
 
 			local style = DocumentStyles[p.style]
 			if style.numbered then
@@ -293,6 +293,31 @@ DocumentClass =
 		self.wordcount = wc
 	end
 }
+
+function CountParagraphWords(paragraph)
+	local wc = 0
+	for _, word in ipairs(paragraph) do
+		if GetWordText(word) ~= "" then
+			wc = wc + 1
+		end
+	end
+	return wc
+end
+
+function GetLiveDocumentWordCount(document)
+	local wc = 0
+	if not document then
+		return 0
+	end
+	for _, paragraph in ipairs(document) do
+		wc = wc + CountParagraphWords(paragraph)
+	end
+	return wc
+end
+
+function GetLiveCurrentDocumentWordCount()
+	return GetLiveDocumentWordCount(Document)
+end
 
 ParagraphClass =
 {
