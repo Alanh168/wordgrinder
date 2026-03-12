@@ -6,6 +6,7 @@ local max = math.max
 local string_format = string.format
 local string_rep = string.rep
 local table_sort = table.sort
+local table_concat = table.concat
 local Write = wg.write
 local GetChar = wg.getchar
 local GetBoundedString = wg.getboundedstring
@@ -41,9 +42,62 @@ local function getLeafStem(filename)
 	return (filename:gsub("%.png$", ""))
 end
 
+local function titleCaseWord(word)
+	if word == "" then
+		return word
+	end
+	local lowered = word:lower()
+	return lowered:sub(1, 1):upper() .. lowered:sub(2)
+end
+
 local function formatDisplayName(stem)
-	local label = stem:gsub("[-_]+", " ")
-	return label
+	-- Backslash escapes the next character, allowing "\monster" to keep the word.
+	local tokens = {}
+	local current = {}
+	local escaped = false
+	local tokenEscaped = false
+
+	local function pushToken()
+		if #current == 0 then
+			return
+		end
+		tokens[#tokens + 1] = {
+			text = table_concat(current),
+			escaped = tokenEscaped,
+		}
+		current = {}
+		tokenEscaped = false
+	end
+
+	for i = 1, #stem do
+		local ch = stem:sub(i, i)
+		if escaped then
+			current[#current + 1] = ch
+			tokenEscaped = true
+			escaped = false
+		elseif ch == "\\" then
+			escaped = true
+		elseif ch:match("[-_%s]") then
+			pushToken()
+		else
+			current[#current + 1] = ch
+		end
+	end
+
+	if escaped then
+		current[#current + 1] = "\\"
+		tokenEscaped = true
+	end
+	pushToken()
+
+	local words = {}
+	for _, token in ipairs(tokens) do
+		if token.escaped or token.text:lower() ~= "monster" then
+			words[#words + 1] = titleCaseWord(token.text)
+		end
+	end
+
+	return table_concat(words, " ")
 end
 
 local function compareCasefold(a, b)

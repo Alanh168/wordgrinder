@@ -261,14 +261,14 @@ end
 local function redrawmonsterbar()
 	if not isMonsterBarVisible() then
 		monsterBarHeight = 0
-		clearSpriteOverlay()
+		replaceSpriteOverlay({})
 		return
 	end
 
 	local isActive = rawget(_G, "IsMonsterQueueActive")
 	if not isActive or not isActive() then
 		monsterBarHeight = 0
-		clearSpriteOverlay()
+		replaceSpriteOverlay({})
 		return
 	end
 
@@ -276,7 +276,7 @@ local function redrawmonsterbar()
 	local getState = rawget(_G, "GetMonsterQueueState")
 	if not getCurrent or not getState then
 		monsterBarHeight = 0
-		clearSpriteOverlay()
+		replaceSpriteOverlay({})
 		return
 	end
 
@@ -284,7 +284,7 @@ local function redrawmonsterbar()
 	local state = getState()
 	if not monster then
 		monsterBarHeight = 0
-		clearSpriteOverlay()
+		replaceSpriteOverlay({})
 		return
 	end
 
@@ -318,12 +318,18 @@ local function redrawmonsterbar()
 	SetNormal()
 	RAlignInField(0, 0, ScreenWidth - spriteReserved, barText)
 
-	-- Emit OSC 99 to render the monster sprite via the Image Overlay.
-	-- Clear first because the overlay can now display multiple sprites at once.
-	-- Sprite is right-anchored to spriteX by CRT's ImageOverlay.
+	-- Replace the overlay frame so stale UI sprites never leak back into the editor.
 	if spriteReserved > 0 then
-		clearSpriteOverlay()
-		emitSpriteCommand(monster.sprite_ref, ScreenWidth, 0, 1.5)
+		replaceSpriteOverlay({
+			{
+				spriteId = monster.sprite_ref,
+				cellX = ScreenWidth,
+				cellY = 0,
+				targetCellHeight = 1.5,
+			},
+		})
+	else
+		replaceSpriteOverlay({})
 	end
 
 	monsterBarHeight = 1

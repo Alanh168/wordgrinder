@@ -108,7 +108,7 @@ local function drawMonsterSlot(x, y, w, h, monster, isSelected, overlaySprites)
 	-- Draw selection indicator
 	if isSelected then
 		SetBright()
-		Write(x, y, ">")
+		Write(x, y+4, ">")
 	else
 		SetNormal()
 		Write(x, y, " ")
