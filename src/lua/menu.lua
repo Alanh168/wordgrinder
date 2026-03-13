@@ -17,6 +17,20 @@ local menu_tab = {}
 local key_tab = {}
 local menu_stack = {}
 
+--- Convert internal accelerator notation to macOS-style display.
+--- "^C" becomes "Cmd+C", "^S" becomes "Cmd+S", etc.  Compound keys like
+--- "S^LEFT" or "^PGUP" are left unchanged.
+--- Note: We use "Cmd+" instead of the Unicode ⌘ (U+2318) because CRT's
+--- retro terminal fonts lack that glyph and macOS font fallback renders
+--- it as the Apple logo.
+local function displayAccelerator(ak)
+	if not ak then return nil end
+	if ak:match("^%^%u$") then
+		return "Cmd+" .. ak:sub(2)
+	end
+	return ak
+end
+
 function CreateMenu(n, m, menu)
 	local w = n:len()
 	menu = menu or {}
@@ -207,6 +221,7 @@ local EditMenu = CreateMenu("Edit",
 	{"EC",         "C", "Copy",                      "^C",        Cmd.Copy},
 	{"EP",         "P", "Paste",                     "^V",        { cp, Cmd.Paste }},
 	{"ED",         "D", "Delete",                    nil,         { cp, Cmd.Delete }},
+	{"EA",         "A", "Select all",                "^A",        Cmd.SelectAll},
 	"-",
 	{"Eundo",      "U", "Undo",                      "^Z",        Cmd.Undo},
 	{"Eredo",      "E", "Redo",                      "^Y",        Cmd.Redo},
@@ -331,9 +346,9 @@ MenuClass = {
 	drawmenu = function(self, x, y, menu, n, top)
 		local akw = 0
 		for _, item in ipairs(menu) do
-			local ak = self.accelerators[item.id]
-			if ak then
-				local l = GetStringWidth(ak)
+			local dak = displayAccelerator(self.accelerators[item.id])
+			if dak then
+				local l = GetStringWidth(dak)
 				if (akw < l) then
 					akw = l
 				end
@@ -361,7 +376,7 @@ MenuClass = {
 
 		for i = top, top+visiblelen-1 do
 			local item = menu[i]
-			local ak = self.accelerators[item.id]
+			local dak = displayAccelerator(self.accelerators[item.id])
 			local yy = y+i-top+1
 
 			if (item == "-") then
@@ -381,9 +396,9 @@ MenuClass = {
 
 				SetBold()
 				SetBright()
-				if ak then
-					local l = GetStringWidth(ak)
-					Write(x+w-l, yy, ak)
+				if dak then
+					local l = GetStringWidth(dak)
+					Write(x+w-l, yy, dak)
 				end
 
 				if item.mk then

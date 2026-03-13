@@ -741,6 +741,13 @@ function Cmd.SelectWord()
 		Cmd.GotoEndOfWord()
 end
 
+function Cmd.SelectAll()
+	return Cmd.UnsetMark() and
+		Cmd.GotoBeginningOfDocument() and
+		Cmd.SetMark() and
+		Cmd.GotoEndOfDocument()
+end
+
 function Cmd.ChangeDocument(name)
 	if not DocumentSet:findDocument(name) then
 		return false
@@ -753,6 +760,44 @@ end
 
 function Cmd.Cut()
 	return Cmd.Copy(true) and Cmd.Delete()
+end
+
+-- Base64 encoder for OSC 52 clipboard support.
+local b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function base64encode(data)
+	local out = {}
+	for i = 1, #data, 3 do
+		local a, b, c = data:byte(i, i + 2)
+		b = b or 0
+		c = c or 0
+		local n = a * 65536 + b * 256 + c
+		out[#out+1] = b64chars:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+		out[#out+1] = b64chars:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+		local rem = #data - i + 1
+		out[#out+1] = rem >= 2 and b64chars:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1) or "="
+		out[#out+1] = rem >= 3 and b64chars:sub(n % 64 + 1, n % 64 + 1) or "="
+	end
+	return table.concat(out)
+end
+
+-- Send text to the system clipboard via OSC 52 escape sequence.
+local function setSystemClipboard(text)
+	io.write("\027]52;c;" .. base64encode(text) .. "\007")
+	io.flush()
+end
+
+-- Extract plain text from a clipboard document buffer.
+local function bufferToPlainText(buffer)
+	local lines = {}
+	for i = 1, #buffer do
+		local para = buffer[i]
+		local words = {}
+		for j = 1, #para do
+			words[#words+1] = para[j]
+		end
+		lines[#lines+1] = table.concat(words, " ")
+	end
+	return table.concat(lines, "\n")
 end
 
 function Cmd.Copy(keepselection)
@@ -818,6 +863,11 @@ function Cmd.Copy(keepselection)
 	end
 
 	buffer:renumber()
+
+	-- Also send to system clipboard via OSC 52 so Cmd+V (which reads
+	-- the system clipboard) stays in sync.
+	setSystemClipboard(bufferToPlainText(buffer))
+
 	NonmodalMessage(buffer.wordcount.." words copied to clipboard.")
 	if not keepselection then
 		return Cmd.UnsetMark()
