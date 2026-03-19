@@ -25,6 +25,11 @@ local previousTotalWords = 0  -- baseline for delta computation
 local logDirty = false        -- true if in-memory log differs from disk
 local logFilePath = nil       -- set on init to CONFIGDIR.."/wordcount_log.lua"
 
+-- Monster defeat log: { ["2026-03-02"] = { {name="Agumon", time="14:30"}, ... }, ... }
+local defeatLog = {}
+local defeatLogDirty = false
+local defeatLogFilePath = nil  -- set on init to CONFIGDIR.."/monster_defeat_log.lua"
+
 -----------------------------------------------------------------------------
 -- Helpers
 
@@ -302,19 +307,6 @@ end
 
 local formattedSprites = loadFormattedSprites()
 
-local evolutionStages = {
-	{ threshold = 0, sprite_key = "agumon" },
-}
-
-local function getStageForWordCount(wordCount)
-	local stage = evolutionStages[1]
-	for _, s in ipairs(evolutionStages) do
-		if wordCount >= s.threshold then
-			stage = s
-		end
-	end
-	return stage
-end
 
 local function getSpriteDefinition(spriteKey)
 	if type(formattedSprites[spriteKey]) ~= "table" then
@@ -662,11 +654,6 @@ local function getSpriteByKey(spriteKey, availableWidth, availableHeight, pixelW
 	return spriteRows, (def.color_palette or def.palette)
 end
 
-local function getEvolutionSprite(wordCount, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
-	local stage = getStageForWordCount(wordCount)
-	return getSpriteByKey(stage.sprite_key, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps)
-end
-
 -- Try a size-suffixed key first (_md, _sm), fall back to the base key.
 -- This lets callers request a pre-made smaller sprite when available.
 local function getSpriteByKeyMultiRes(spriteKey, suffix, availableWidth, availableHeight, pixelWidth, extraDownscaleSteps, resampleMode)
@@ -747,10 +734,83 @@ local function saveWordCountLog()
 	logDirty = false
 end
 
+-----------------------------------------------------------------------------
+-- Monster defeat log I/O
+
+local function loadDefeatLog()
+	if not defeatLogFilePath then
+		return {}
+	end
+	local f = io.open(defeatLogFilePath, "r")
+	if not f then
+		return {}
+	end
+	local content = f:read("*a")
+	f:close()
+	if not content or content == "" then
+		return {}
+	end
+	local fn, err = loadstring(content)
+	if not fn then
+		return {}
+	end
+	local ok, result = pcall(fn)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return {}
+end
+
+local function saveDefeatLog()
+	if not defeatLogFilePath or not defeatLogDirty then
+		return
+	end
+
+	local dates = {}
+	for date, _ in pairs(defeatLog) do
+		dates[#dates + 1] = date
+	end
+	table.sort(dates)
+
+	local f = io.open(defeatLogFilePath, "w")
+	if not f then
+		return
+	end
+	f:write("return {\n")
+	for _, date in ipairs(dates) do
+		local entries = defeatLog[date]
+		f:write(string_format('  ["%s"] = {\n', date))
+		for _, entry in ipairs(entries) do
+			-- Escape any quotes in monster names
+			local safeName = entry.name:gsub('"', '\\"')
+			f:write(string_format('    { name = "%s", time = "%s" },\n', safeName, entry.time or ""))
+		end
+		f:write("  },\n")
+	end
+	f:write("}\n")
+	f:close()
+	defeatLogDirty = false
+end
+
+-- Global API for other addons (e.g. bestiary) to record a monster defeat.
+function LogMonsterDefeat(monsterName)
+	local today = getToday()
+	local timeStr = os.date("%H:%M")
+	if not defeatLog[today] then
+		defeatLog[today] = {}
+	end
+	local dayLog = defeatLog[today]
+	dayLog[#dayLog + 1] = { name = monsterName, time = timeStr }
+	defeatLogDirty = true
+end
+
 GlobalStatisticsUtils = {
 	flushPendingLog = function()
 		if logDirty then
 			saveWordCountLog()
+		end
+		if defeatLogDirty then
+			saveDefeatLog()
 		end
 	end,
 }
@@ -780,6 +840,9 @@ local function onIdle(event, token)
 	if logDirty then
 		saveWordCountLog()
 	end
+	if defeatLogDirty then
+		saveDefeatLog()
+	end
 end
 
 -----------------------------------------------------------------------------
@@ -790,42 +853,42 @@ function Cmd.StatisticsUI()
 	if logDirty then
 		saveWordCountLog()
 	end
-
-	-- Gather sorted history (most recent first)
-	local dates = {}
-	for date, _ in pairs(dailyLog) do
-		dates[#dates + 1] = date
+	if defeatLogDirty then
+		saveDefeatLog()
 	end
-	table.sort(dates, function(a, b) return a > b end)
 
+	-- Gather sorted word-count history (most recent first)
+	local wcDates = {}
+	for date, _ in pairs(dailyLog) do
+		wcDates[#wcDates + 1] = date
+	end
+	table.sort(wcDates, function(a, b) return a > b end)
+
+	-- Gather sorted defeat history (most recent first)
+	local defeatDates = {}
+	for date, _ in pairs(defeatLog) do
+		defeatDates[#defeatDates + 1] = date
+	end
+	table.sort(defeatDates, function(a, b) return a > b end)
+
+	-- Build a flat list of defeat-log rows for scrolling.
+	-- Each entry is either a date header or a monster entry.
+	local defeatRows = {}
+	for _, date in ipairs(defeatDates) do
+		defeatRows[#defeatRows + 1] = { kind = "date", date = date }
+		local entries = defeatLog[date]
+		for _, entry in ipairs(entries) do
+			defeatRows[#defeatRows + 1] = { kind = "monster", name = entry.name, time = entry.time, date = date }
+		end
+	end
+
+	local NUM_PAGES = 2
+	local currentPage = 1  -- 1 = Word Count, 2 = Monster Defeats
 	local scrollOffset = 0
 
-	local function drawScreen()
-		ResizeScreen()
-		wg.clearscreen()
-
-		local sw, sh = ScreenWidth, ScreenHeight
-
-		-- Draw top and bottom borders only (no side borders)
-		SetBright()
-		local hborder = string.rep("─", sw)
-		Write(0, 0, hborder)
-		CentreInField(0, 0, sw, " Statistics ")
-		Write(0, sh - 1, hborder)
-		SetNormal()
-
-		local innerX = 1
-		local innerW = sw - 2
-
-		-- Today's word count (prominent display)
+	local function drawWordCountPage(sw, sh, innerX, innerW)
 		local today = getToday()
 		local todayCount = dailyLog[today] or 0
-
-		-- Recent history starts at 80% of screen height
-		local historyHeaderY = int(sh * 0.8)
-		if historyHeaderY > sh - 7 then
-			historyHeaderY = sh - 7
-		end
 
 		local headerY = 2
 		SetBright()
@@ -838,7 +901,6 @@ function Cmd.StatisticsUI()
 		SetBright()
 		local visualWidth = utf8len(bigLines[1] or "")
 		if visualWidth > innerW then
-			-- Fallback to single-line if terminal too narrow
 			CentreInField(innerX, countY + 3, innerW, formatNumber(todayCount))
 		else
 			local bigX = innerX + int((innerW - visualWidth) / 2)
@@ -848,70 +910,34 @@ function Cmd.StatisticsUI()
 		end
 		SetNormal()
 
-		-- Character evolution sprite
-		local spriteTop = countY + BIG_DIGIT_HEIGHT + 1
-		local spriteBottom = historyHeaderY - 1
-		local availableHeight = spriteBottom - spriteTop + 1
-		local sprite, palette = getEvolutionSprite(
-			todayCount,
-			innerW,
-			availableHeight,
-			DEFAULT_SPRITE_PIXEL_WIDTH)
-		if sprite and palette then
-			local spriteWidth, spriteHeight = getSpriteSize(sprite, DEFAULT_SPRITE_PIXEL_WIDTH)
-			local spriteY = spriteTop + int((spriteBottom - spriteTop - spriteHeight + 1) / 2)
-			if spriteY < spriteTop then
-				spriteY = spriteTop
-			end
-			local spriteX = innerX + int((innerW - spriteWidth) / 2)
-			for i, row in ipairs(sprite) do
-				if spriteY + i - 1 < historyHeaderY then
-					renderSpriteRow(
-						spriteX,
-						spriteY + i - 1,
-						row,
-						palette,
-						DEFAULT_SPRITE_PIXEL_WIDTH)
-				end
-			end
-		end
-		SetNormal()
-
-		-- Recent history section
+		-- Recent history section (directly after big number, no sprite)
+		local historyHeaderY = countY + BIG_DIGIT_HEIGHT + 2
 		SetBright()
 		CentreInField(innerX, historyHeaderY, innerW, "Recent History")
 		SetNormal()
 
-		-- Divider line
 		local dividerY = historyHeaderY + 1
-		local divider = string.rep("─", max(1, innerW))
 		SetDim()
-		CentreInField(innerX, dividerY, innerW, divider)
+		CentreInField(innerX, dividerY, innerW, string.rep("─", max(1, innerW)))
 		SetNormal()
 
-		-- History list
 		local listStartY = dividerY + 1
-		local helpRows = 2
-		local listEndY = sh - 3 - helpRows
+		local listEndY = sh - 5
 		local visibleRows = listEndY - listStartY
 		if visibleRows < 1 then visibleRows = 1 end
 
-		-- Clamp scroll
-		local maxScroll = max(0, #dates - visibleRows)
-		if scrollOffset > maxScroll then
-			scrollOffset = maxScroll
-		end
-		if scrollOffset < 0 then
-			scrollOffset = 0
-		end
+		local maxScroll = max(0, #wcDates - visibleRows)
+		if scrollOffset > maxScroll then scrollOffset = maxScroll end
+		if scrollOffset < 0 then scrollOffset = 0 end
 
+		local today_ = getToday()
 		for row = 1, visibleRows do
 			local idx = scrollOffset + row
-			if idx <= #dates then
-				local date = dates[idx]
+			if idx <= #wcDates then
+				local date = wcDates[idx]
 				local count = dailyLog[date]
 				local line = string_format("  %s    %s", date, formatNumber(count))
-				if date == today then
+				if date == today_ then
 					SetBright()
 				else
 					SetNormal()
@@ -922,8 +948,8 @@ function Cmd.StatisticsUI()
 		SetNormal()
 
 		-- Scroll indicator
-		if #dates > visibleRows then
-			local barH = max(1, int(visibleRows * visibleRows / #dates))
+		if #wcDates > visibleRows then
+			local barH = max(1, int(visibleRows * visibleRows / #wcDates))
 			local barPos = int(scrollOffset * (visibleRows - barH) / maxScroll)
 			for row = 0, visibleRows - 1 do
 				if row >= barPos and row < barPos + barH then
@@ -933,9 +959,95 @@ function Cmd.StatisticsUI()
 				end
 			end
 		end
+	end
+
+	local function drawDefeatLogPage(sw, sh, innerX, innerW)
+		local headerY = 2
+		SetBright()
+		CentreInField(innerX, headerY, innerW, "Monster Defeat Log")
+		SetNormal()
+
+		local dividerY = headerY + 1
+		SetDim()
+		CentreInField(innerX, dividerY, innerW, string.rep("─", max(1, innerW)))
+		SetNormal()
+
+		if #defeatRows == 0 then
+			SetDim()
+			CentreInField(innerX, int(sh / 2), innerW, "No monsters defeated yet.")
+			SetNormal()
+			return
+		end
+
+		local listStartY = dividerY + 1
+		local listEndY = sh - 5
+		local visibleRows = listEndY - listStartY
+		if visibleRows < 1 then visibleRows = 1 end
+
+		local maxScroll = max(0, #defeatRows - visibleRows)
+		if scrollOffset > maxScroll then scrollOffset = maxScroll end
+		if scrollOffset < 0 then scrollOffset = 0 end
+
+		local today = getToday()
+		for row = 1, visibleRows do
+			local idx = scrollOffset + row
+			if idx <= #defeatRows then
+				local entry = defeatRows[idx]
+				if entry.kind == "date" then
+					SetBright()
+					local dateLabel = entry.date
+					if entry.date == today then
+						dateLabel = dateLabel .. "  (today)"
+					end
+					LAlignInField(innerX + 2, listStartY + row - 1, innerW - 4, dateLabel)
+				else
+					SetNormal()
+					local line = string_format("    %s  %s", entry.time, entry.name)
+					LAlignInField(innerX + 2, listStartY + row - 1, innerW - 4, line)
+				end
+			end
+		end
+		SetNormal()
+
+		-- Scroll indicator
+		if #defeatRows > visibleRows then
+			local barH = max(1, int(visibleRows * visibleRows / #defeatRows))
+			local barPos = int(scrollOffset * (visibleRows - barH) / maxScroll)
+			for row = 0, visibleRows - 1 do
+				if row >= barPos and row < barPos + barH then
+					Write(innerX + innerW - 1, listStartY + row, "║")
+				else
+					Write(innerX + innerW - 1, listStartY + row, "│")
+				end
+			end
+		end
+	end
+
+	local function drawScreen()
+		ResizeScreen()
+		wg.clearscreen()
+
+		local sw, sh = ScreenWidth, ScreenHeight
+
+		-- Top and bottom borders
+		SetBright()
+		local hborder = string.rep("─", sw)
+		Write(0, 0, hborder)
+		CentreInField(0, 0, sw, string_format(" Statistics [%d/%d] ", currentPage, NUM_PAGES))
+		Write(0, sh - 1, hborder)
+		SetNormal()
+
+		local innerX = 1
+		local innerW = sw - 2
+
+		if currentPage == 1 then
+			drawWordCountPage(sw, sh, innerX, innerW)
+		else
+			drawDefeatLogPage(sw, sh, innerX, innerW)
+		end
 
 		-- Help text
-		CentreInField(innerX, sh - 4, innerW, "UP/DOWN: Scroll history")
+		CentreInField(innerX, sh - 4, innerW, "LEFT/RIGHT: Switch page   UP/DOWN: Scroll")
 		CentreInField(innerX, sh - 3, innerW, "RETURN or ^C: Close")
 
 		wg.hidecursor()
@@ -950,6 +1062,16 @@ function Cmd.StatisticsUI()
 			break
 		elseif key == "KEY_RESIZE" then
 			-- Just redraw on resize
+		elseif (key == "KEY_LEFT") or (key == "KEY_SLEFT") then
+			if currentPage > 1 then
+				currentPage = currentPage - 1
+				scrollOffset = 0
+			end
+		elseif (key == "KEY_RIGHT") or (key == "KEY_SRIGHT") then
+			if currentPage < NUM_PAGES then
+				currentPage = currentPage + 1
+				scrollOffset = 0
+			end
 		elseif (key == "KEY_UP") or (key == "KEY_SUP") then
 			scrollOffset = max(0, scrollOffset - 1)
 		elseif (key == "KEY_DOWN") or (key == "KEY_SDOWN") then
@@ -1063,6 +1185,9 @@ do
 		logFilePath = CONFIGDIR .. "/wordcount_log.lua"
 		dailyLog = loadWordCountLog()
 		previousTotalWords = computeTotalWordCount()
+
+		defeatLogFilePath = CONFIGDIR .. "/monster_defeat_log.lua"
+		defeatLog = loadDefeatLog()
 	end
 
 	AddEventListener(Event.RegisterAddons, initCb)

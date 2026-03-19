@@ -489,6 +489,10 @@ do
 			if queueState.wordsTyped >= monster.target_word_count then
 				local defeated = DequeueCurrentMonster()
 				if defeated then
+					local logger = rawget(_G, "LogMonsterDefeat")
+					if type(logger) == "function" then
+						logger(defeated.name)
+					end
 					NonmodalMessage(string_format("%s defeated!", defeated.name))
 				end
 			end
