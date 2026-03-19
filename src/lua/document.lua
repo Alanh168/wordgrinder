@@ -414,7 +414,9 @@ ParagraphClass =
 				cstyle = cstyle,
 				colorindex = nil,
 				firstword = self.sentences[wn],
-				paragraphfirstword = (wn == 1)
+				paragraphfirstword = (wn == 1),
+				wn = wn,
+				paragraph = self,
 			}
 			FireEvent(Event.DrawWord, payload)
 
@@ -475,7 +477,9 @@ ParagraphClass =
 				cstyle = cstyle,
 				colorindex = nil,
 				firstword = self.sentences[wn],
-				paragraphfirstword = (wn == 1)
+				paragraphfirstword = (wn == 1),
+				wn = wn,
+				paragraph = self,
 			}
 			FireEvent(Event.DrawWord, payload)
 

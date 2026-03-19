@@ -8,8 +8,6 @@ local GetColorIndex = wg.getcolorindex
 local commentColorIndex = GetColorIndex("cadmiumorange") or GetColorIndex("orange") or 208
 
 do
-	local in_comment = false
-
 	local function count_comment_markers(text)
 		local count = 0
 		local i = 1
@@ -23,25 +21,32 @@ do
 		end
 	end
 
-	local function cb(self, token, payload)
-		if payload.paragraphfirstword then
-			in_comment = false
+	local function in_comment_before(payload)
+		local paragraph = payload.paragraph
+		local wn = payload.wn
+		if not paragraph or not wn then
+			return false
 		end
 
+		local count = 0
+		for i = 1, wn - 1 do
+			count = count + count_comment_markers(GetWordText(paragraph[i]))
+		end
+		return (count % 2) == 1
+	end
+
+	local function cb(self, token, payload)
 		local text = GetWordText(payload.word)
 		local markers = count_comment_markers(text)
-		if (markers == 0) and (not in_comment) then
+		local is_comment = in_comment_before(payload)
+		if (markers == 0) and (not is_comment) then
 			return
 		end
 
-		local highlight = in_comment or (markers > 0)
+		local highlight = is_comment or (markers > 0)
 		if highlight then
 			payload.cstyle = bor(payload.cstyle, wg.DIM)
 			payload.colorindex = commentColorIndex
-		end
-
-		if (markers % 2) == 1 then
-			in_comment = not in_comment
 		end
 	end
 
