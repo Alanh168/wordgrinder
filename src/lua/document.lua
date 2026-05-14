@@ -295,12 +295,53 @@ DocumentClass =
 }
 
 function CountParagraphWords(paragraph)
+	-- Word count should ignore metadata content used for UI-only behaviors.
+	--
+	-- These words are not treated as author text:
+	--  * comment text starting with ++ (till paragraph end, or toggled per marker)
+	--  * bracketed spans [like this], including the brackets.
+	--
+	-- This keeps stats/monster/day counts focused on true visible prose.
 	local wc = 0
-	for _, word in ipairs(paragraph) do
-		if GetWordText(word) ~= "" then
-			wc = wc + 1
+	local in_comment = false
+	local bracket_depth = 0
+
+	local function count_comment_markers(text)
+		local count = 0
+		local i = 1
+		while true do
+			i = text:find("%%+%%+", i)
+			if not i then
+				return count
+			end
+			count = count + 1
+			i = i + 2
 		end
 	end
+
+	for _, word in ipairs(paragraph) do
+		local text = GetWordText(word)
+		local markers = count_comment_markers(text)
+		local open_brackets = select(2, text:gsub("%[", ""))
+		local close_brackets = select(2, text:gsub("%]", ""))
+
+		local is_comment_word = in_comment or (markers > 0)
+		local is_bracket_word = (bracket_depth > 0) or (open_brackets > 0) or (close_brackets > 0)
+
+		if (not is_comment_word) and (not is_bracket_word) and (text ~= "") then
+			wc = wc + 1
+		end
+
+		if (markers % 2) == 1 then
+			in_comment = not in_comment
+		end
+
+		bracket_depth = bracket_depth + open_brackets - close_brackets
+		if bracket_depth < 0 then
+			bracket_depth = 0
+		end
+	end
+
 	return wc
 end
 

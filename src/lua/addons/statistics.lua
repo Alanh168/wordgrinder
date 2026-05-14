@@ -51,6 +51,13 @@ local function countCommentMarkers(text)
 end
 
 local function countNonCommentWords(paragraph)
+	-- When CountParagraphWords exists, it already implements the desired behavior
+	-- for comment markers ("++") and bracketed text ("[..."]). Keep the logic
+	-- in sync by forwarding through it when available.
+	if type(CountParagraphWords) == "function" then
+		return CountParagraphWords(paragraph)
+	end
+
 	local count = 0
 	local in_comment = false
 	for _, word in ipairs(paragraph) do
@@ -83,6 +90,16 @@ local function computeTotalWordCount()
 		end
 	end
 	return total
+end
+
+-- Public API for tests and plugins
+function GetDailyWordCount(date)
+	date = date or getToday()
+	return dailyLog[date] or 0
+end
+
+function GetDocumentSetWordCount()
+	return computeTotalWordCount()
 end
 
 local function formatNumber(n)
