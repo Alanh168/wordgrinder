@@ -477,8 +477,8 @@ do
 		local currentWC = getCurrentWordCount()
 		local lastWC = queueState._lastWordCount or currentWC
 		local delta = currentWC - lastWC
-		if delta > 0 then
-			queueState.wordsTyped = queueState.wordsTyped + delta
+		if delta ~= 0 then
+			queueState.wordsTyped = math.max(0, queueState.wordsTyped + delta)
 		end
 		queueState._lastWordCount = currentWC
 		queueState.lastKeyTime = os.time()
