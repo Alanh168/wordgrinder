@@ -1,0 +1,4 @@
+module WordgrinderCore {
+    header "wg_ios.h"
+    export *
+}
