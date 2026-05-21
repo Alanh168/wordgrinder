@@ -13,6 +13,104 @@
 extern int luaopen_bit(lua_State *L);
 extern int luaopen_lpeg(lua_State *L);
 
+/* -------- Phase 4: sprite overlay queue (OSC 99) ---------------------- */
+/* Wordgrinder emits sprite commands via OSC 99 escape sequences on the
+   desktop (redraw.lua:146 emitSpriteCommand -> io.write("\\27]99;…\\7")).
+   On iPad there is no PTY for cool-retro-term to parse, so we intercept
+   io.write at the Lua boundary, strip the OSC framing, and push the inner
+   payload onto a mutex-protected ring buffer. Swift drains the queue each
+   frame via wg_ios_pop_sprite_command(). Wordgrinder's emitter stays
+   unchanged — it still emits real OSC 99 — so the desktop pipeline is
+   completely unaffected by these additions. */
+
+#define WG_SPRITE_QUEUE_SLOTS  32
+#define WG_SPRITE_PAYLOAD_MAX  8192
+
+typedef struct {
+    char payload[WG_SPRITE_PAYLOAD_MAX];
+} wg_sprite_slot_t;
+
+static wg_sprite_slot_t wg_sprite_queue[WG_SPRITE_QUEUE_SLOTS];
+static int wg_sprite_queue_head = 0;
+static int wg_sprite_queue_tail = 0;
+static pthread_mutex_t wg_sprite_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void wg_sprite_queue_push(const char* payload)
+{
+    if (!payload) return;
+    pthread_mutex_lock(&wg_sprite_queue_mutex);
+    int next_tail = (wg_sprite_queue_tail + 1) % WG_SPRITE_QUEUE_SLOTS;
+    if (next_tail == wg_sprite_queue_head) {
+        /* Queue full — drop oldest. Latest frame supersedes anyway. */
+        wg_sprite_queue_head = (wg_sprite_queue_head + 1) % WG_SPRITE_QUEUE_SLOTS;
+    }
+    strncpy(wg_sprite_queue[wg_sprite_queue_tail].payload,
+            payload,
+            WG_SPRITE_PAYLOAD_MAX - 1);
+    wg_sprite_queue[wg_sprite_queue_tail].payload[WG_SPRITE_PAYLOAD_MAX - 1] = '\0';
+    wg_sprite_queue_tail = next_tail;
+    pthread_mutex_unlock(&wg_sprite_queue_mutex);
+}
+
+int wg_ios_pop_sprite_command(char* out, int out_size)
+{
+    if (!out || out_size <= 0) return 0;
+    pthread_mutex_lock(&wg_sprite_queue_mutex);
+    if (wg_sprite_queue_head == wg_sprite_queue_tail) {
+        pthread_mutex_unlock(&wg_sprite_queue_mutex);
+        out[0] = '\0';
+        return 0;
+    }
+    strncpy(out, wg_sprite_queue[wg_sprite_queue_head].payload, out_size - 1);
+    out[out_size - 1] = '\0';
+    wg_sprite_queue_head = (wg_sprite_queue_head + 1) % WG_SPRITE_QUEUE_SLOTS;
+    pthread_mutex_unlock(&wg_sprite_queue_mutex);
+    return 1;
+}
+
+/* Lua-callable: takes the OSC 99 payload (the part between `\27]99;` and
+   `\7`) and pushes it onto the queue. Registered as `__wg_ios_emit_sprite`
+   in the Lua global table during boot. */
+static int wg_lua_emit_sprite(lua_State* lua_state)
+{
+    const char* payload = luaL_checkstring(lua_state, 1);
+    wg_sprite_queue_push(payload);
+    return 0;
+}
+
+/* Installs the io.write wrapper that intercepts OSC 99 sequences. Non-OSC
+   writes fall through to the original io.write untouched, so Lua code that
+   uses io.write for unrelated purposes is unaffected. Wordgrinder's
+   emitSpriteCommand (redraw.lua:146) continues to emit real OSC sequences,
+   which keeps it identical to the desktop build. Runs once after scripts
+   are loaded inside do_boot(). */
+static void wg_install_sprite_bridge(void)
+{
+    lua_pushcfunction(L, wg_lua_emit_sprite);
+    lua_setglobal(L, "__wg_ios_emit_sprite");
+
+    static const char* override_src =
+        "local original = io.write\n"
+        "io.write = function(...)\n"
+        "    local n = select('#', ...)\n"
+        "    local s = ''\n"
+        "    for i = 1, n do s = s .. tostring(select(i, ...)) end\n"
+        "    local payload = s:match('^\\27%]99;(.-)\\7$')\n"
+        "    if payload then\n"
+        "        __wg_ios_emit_sprite(payload)\n"
+        "        return io.stdout\n"
+        "    end\n"
+        "    return original(...)\n"
+        "end\n";
+
+    if (luaL_dostring(L, override_src) != 0) {
+        const char* err = lua_tostring(L, -1);
+        fprintf(stderr, "wg_ios: failed to install sprite bridge: %s\n",
+                err ? err : "(no message)");
+        lua_pop(L, 1);
+    }
+}
+
 const char* wg_ios_hello(void)
 {
     return "wordgrinder linked OK";
@@ -99,6 +197,12 @@ static void do_boot(void)
     luaopen_lpeg(L);
 
     script_load_from_table(script_table);
+
+    /* Install the OSC 99 io.write wrapper after scripts are loaded so it
+       overrides the freshly-resolved io.write that wordgrinder's emitter
+       (redraw.lua) will call at runtime. */
+    wg_install_sprite_bridge();
+
     boot_completed = 1;
 }
 

@@ -78,6 +78,25 @@ void wg_ios_get_cursor(int* col, int* row, int* visible);
    dpy_getchar(). */
 void wg_ios_push_key(int32_t key);
 
+/* -------- Phase 4: sprite overlay (OSC 99) -------- */
+
+/* Drain the next queued sprite command payload into `out`. Commands are
+   pushed onto the queue when wordgrinder's Lua code emits an OSC 99
+   escape sequence — the boot-time io.write wrapper in wg_ios.c strips the
+   `\027]99;` / `\007` framing and pushes the inner payload here, leaving
+   wordgrinder's emitter (redraw.lua:146 emitSpriteCommand) unchanged so
+   it stays platform-agnostic and works on desktop unmodified.
+
+   Payload format matches cool-retro-term's ImageOverlay.qml:
+     "clear"
+     "frame;<gen>;<entries>"   (entries = sprite,...|sprite,...)
+     "<id>;<x>;<y>;<h>[;<w>[;<anchor>]]"   (legacy single sprite)
+
+   Safe to call from the main thread; queue is mutex-protected. Returns 1
+   if a command was written to `out`, 0 if the queue is empty. Call in a
+   loop until 0 to drain everything pending. */
+int wg_ios_pop_sprite_command(char* out, int out_size);
+
 #ifdef __cplusplus
 }
 #endif
