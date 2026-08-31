@@ -4,8 +4,16 @@ set -e
 cd "$(dirname "$0")"
 
 make
-sudo cp /Users/alanmhernandez/repos/writing-env/wordgrinder/bin/wordgrinder-test /usr/local/bin/wordgrinder-test
-sudo cp ~/repos/writing-env/wordgrinder/bin/wordgrinder-test /usr/local/bin/wordgrinder-test
+
+# Derive the binary path from this script's own location so the script works
+# on any machine, any username, and case-sensitive volumes.
+BIN="$(pwd)/bin/wordgrinder-test"
+if [ ! -f "$BIN" ]; then
+	echo "error: $BIN not found -- did 'make' succeed?" >&2
+	exit 1
+fi
+
+sudo cp "$BIN" /usr/local/bin/wordgrinder-test
 sudo xattr -d com.apple.provenance /usr/local/bin/wordgrinder-test 2>/dev/null || true
 sudo xattr -d com.apple.quarantine /usr/local/bin/wordgrinder-test 2>/dev/null || true
 sudo codesign --force --sign - /usr/local/bin/wordgrinder-test
