@@ -108,6 +108,7 @@ local cp = Cmd.Checkpoint
 
 local ImportMenu = CreateMenu("Import new document",
 {
+	{"FIdocx", "D", "Import Word document...",   nil,         Cmd.ImportDOCXFile},
 	{"FIodt",  "O", "Import ODT file...",        nil,         Cmd.ImportODTFile},
 	{"FIhtml", "H", "Import HTML file...",       nil,         Cmd.ImportHTMLFile},
 	{"FImd",   "M", "Import Markdown file...",   nil,         Cmd.ImportMarkdownFile},
@@ -117,6 +118,7 @@ local ImportMenu = CreateMenu("Import new document",
 
 local ExportMenu = CreateMenu("Export current document",
 {
+	{"FEdocx", "W", "Export to Word...",         nil,         Cmd.ExportDOCXFile},
 	{"FEodt",  "O", "Export to ODT...",          nil,         Cmd.ExportODTFile},
 	{"FEhtml", "H", "Export to HTML...",         nil,         Cmd.ExportHTMLFile},
 	{"FEmd",   "M", "Export to Markdown...",     nil,         Cmd.ExportMarkdownFile},
@@ -128,6 +130,7 @@ local ExportMenu = CreateMenu("Export current document",
 
 local ExportSetMenu = CreateMenu("Export document set",
 {
+	{"FDdocx", "W", "Export to Word...",         nil,         Cmd.ExportDOCXFileSet},
 	{"FDhtml", "H", "Export to HTML...",         nil,         Cmd.ExportHTMLFileSet},
 	{"FDmd",   "M", "Export to Markdown...",     nil,         Cmd.ExportMarkdownFileSet},
 	{"FDtxt",  "T", "Export to plain text...",   nil,         Cmd.ExportTextFileSet},

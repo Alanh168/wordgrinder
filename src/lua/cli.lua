@@ -10,14 +10,16 @@ local import_table =
 {
 	["wg"] = Cmd.LoadDocumentSet,
 	["odt"] = Cmd.ImportODTFile,
+	["docx"] = Cmd.ImportDOCXFile,
 	["html"] = Cmd.ImportHTMLFile,
-	["txt"] = Cmd.ImportTextFile 
+	["txt"] = Cmd.ImportTextFile
 }
 
 local export_table =
 {
 	["wg"] = Cmd.SaveCurrentDocumentAs,
 	["odt"] = Cmd.ExportODTFile,
+	["docx"] = Cmd.ExportDOCXFile,
 	["html"] = Cmd.ExportHTMLFile,
 	["tr"] = Cmd.ExportTroffFile,
 	["tex"] = Cmd.ExportLatexFile, 
